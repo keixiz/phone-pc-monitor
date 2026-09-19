@@ -1,0 +1,7 @@
+mss
+Pillow
+websockets
+psutil
+pynput
+opencv-python
+numpy
