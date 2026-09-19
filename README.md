@@ -1,104 +1,98 @@
-# phone-pc-monitor
+# Phone PC Monitor
 
-📱 手机远程监控电脑系统 — 用浏览器实时查看、远程控制你的 Windows PC，支持多设备。
+通过手机浏览器远程查看和控制电脑：实时屏幕 / 摄像头画面、鼠标键盘远程操作、系统命令执行、屏幕字幕推送等。纯 Web 方案，手机端无需安装 App，打开浏览器即用。
 
-> 本项目由 **AI 辅助开发**（豆包 Doubao），从 MVP 到 v1.0 共迭代 12 个版本，全部代码由 AI 根据需求编写、调试和优化。
+> 本项目在开发过程中使用了 AI 编程助手（豆包）辅助编写，由作者主导架构设计与调试。
 
-## 特性
+## 功能一览
 
-### 实时监控
-- 🖥 屏幕实时推流（JPEG，可调帧率）
-- 📷 摄像头切换（懒加载，不占用时自动释放）
-- 🖥 多设备同时管理
-- 📊 系统状态（CPU / 内存 / 网速 / 在岗检测）
-- 🎥 移动侦测报警
+**实时画面**
+- 屏幕 / 摄像头切换，JPEG 帧通过 WebSocket 低延迟推流
+- 多设备列表，一台服务器可同时挂多台电脑
+- 实时帧率、CPU / 内存 / 网络速率显示
+- 在岗 / 离开状态检测
 
-### 远程控制
-- 👆 画面直接点控鼠标（点哪指哪）
-- 🎯 鼠标触控板（备用）
-- ⌨️ 远程键盘输入
-- ⚡ 常用快捷键（Ctrl+C/V/X/Z、Alt+Tab、Win+D）
-- 📽 PPT 翻页控制
+**远程控制**
+- 画面直接触摸操作鼠标（单击左键、双击右键、滑动移动）
+- 触控板模式（滑动移动、单击左键、双击右键）
+- 远程键盘输入、常用快捷键（Ctrl+C/V/X/Z、Alt+Tab、Win+D 等）
+- PPT 翻页遥控（上一页 / 下一页 / F5 / Esc）
 
-### 系统操作
-- 🔒 锁屏 / ⏻ 关机 / 🔄 重启
-- 🌑 黑屏模式
-- 🌐 打开网址 / 文件
-- 📋 远程剪贴板
-- 🖼 换壁纸
-- 🔊 音量控制
-- ☀️ 屏幕亮度
-- 📋 进程管理（查看/结束进程）
+**系统操作**
+- 锁屏、关机、重启、取消关机、黑屏
+- 音量调节（+/−/静音）、亮度调节
+- 剪贴板推送、打开网址 / 本地路径
+- 进程列表查看与结束
+- 文件浏览与下载
+- 更换壁纸
 
-### 互动通知
-- 📢 滚动字幕（颜色/速度/位置可调）
-- 💬 弹窗气泡
-- 🔊 TTS 语音播报
-- ⏰ 定时闹钟提醒
-- 💬 双向文字聊天
-
-### 其他
-- 📸 手动/定时截图存证
-- ✏️ 远程屏幕涂鸦
-- 📁 远程文件浏览/下载
+**互动通知**
+- 屏幕滚动字幕（自定义文字、背景 / 文字颜色、上中下位置、速度、时长）
+- 屏幕角落弹窗气泡
+- 双向聊天（手机 ↔ 电脑桌面弹窗）
+- TTS 语音喊话（电脑朗读文字）
+- 闹钟提醒（1 / 5 / 10 / 30 分钟）
+- 屏幕涂鸦（在桌面上手绘、多种颜色、清空）
+- 定时截图存证（5 / 15 / 30 分钟自动截图到服务器）
 
 ## 架构
 
 ```
-手机浏览器 (H5)  ←→  WebSocket中继 (Linux服务器)  ←→  PC Agent (Windows)
-                        aiohttp                      Python (mss+OpenCV+pynput)
+手机浏览器 (H5)
+     │  wss
+     ▼
+Linux 服务器 (aiohttp WebSocket 中继 + 静态文件 + 截图存储)
+     │  wss
+     ▼
+Windows 电脑 Agent (mss 截屏 / OpenCV 摄像头 / pynput 键鼠)
 ```
 
-- **Server**: aiohttp WebSocket 中继 + 静态文件托管
-- **Agent**: Python 采集端，截屏/摄像头/键鼠控制
-- **Web**: 纯 HTML/CSS/JS，深色现代 UI，无框架
+三端解耦：服务器只做消息中继，不处理画面内容；电脑端负责采集和执行；手机端纯前端。
 
 ## 快速开始
 
-### 1. 服务端
+### 1. 服务端（Linux）
 
 ```bash
 cd server
-pip install -r requirements.txt
-cp config.example.json config.json  # 编辑修改 token
-python monitor-server.py
+pip3 install -r requirements.txt
+cp config.example.json config.json
+# 编辑 config.json，设置一个强随机 token
+python3 monitor-server.py
 ```
 
-Nginx 反代（需要 WebSocket）：
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8000;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-}
-```
+通过 Nginx 反代并启用 WebSocket 升级即可对外提供服务，建议配 HTTPS。
 
-### 2. 电脑端 (Windows)
+### 2. 电脑端（Windows）
 
 ```bash
 cd agent
 pip install -r requirements.txt
+pip install opencv-python numpy
+cp config.example.json config.json
+# 编辑 config.json，填入服务器地址和 token
 python monitor-agent.py
 ```
 
-或打包成 exe 批量部署：双击 `build-exe.bat`
+也可用 PyInstaller 打包成 exe 静默运行（见 `build-exe.bat` 和 `start-hidden.vbs`）。
 
 ### 3. 手机端
 
-浏览器打开 `https://你的域名/`，输入 token。
+浏览器打开服务器域名，输入 token 即可。支持"添加到主屏幕"。
 
 ## 技术栈
 
 | 端 | 技术 |
 |---|---|
-| Server | Python aiohttp, WebSocket |
-| Agent | mss (截屏), OpenCV (摄像头), pynput (键鼠), Pillow, psutil |
-| Web | 原生 HTML/CSS/JS, 深色 UI |
+| 服务端 | Python 3.8+ / aiohttp / WebSocket |
+| 电脑端 | Python 3.8+ / mss / OpenCV / pynput / psutil / pywin32 |
+| 手机端 | 原生 HTML / CSS / JavaScript（无框架） |
 
 ## 安全提醒
 
-⚠️ 请务必修改默认 token，建议使用 HTTPS/WSS 部署。
+- 请务必使用强随机 token，并通过 HTTPS / WSS 部署
+- 本工具用于监控你自己或已获授权的设备，滥用责任自负
+- 开源版本中的服务器地址和 token 均为占位符，使用前请自行修改
 
 ## License
 
