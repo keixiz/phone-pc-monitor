@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>电脑监控</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #131826;
+    --surface2: #1a2033;
+    --border: #252d42;
+    --text: #e6eaf2;
+    --text2: #8b95b0;
+    --accent: #5b8def;
+    --accent2: #7c9eff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #f0883e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
+  #topbar {
+    padding: calc(12px + env(safe-area-inset-top)) 16px 8px;
+    background: linear-gradient(180deg, rgba(19,24,38,.95), rgba(10,14,26,.8));
+    backdrop-filter: blur(20px);
+  }
+  #row1 { display: flex; align-items: center; gap: 10px; }
+  .logo { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex-shrink: 0;
+    box-shadow: 0 0 10px currentColor; transition: all .3s; }
+  .dot.on { background: var(--green); }
+  .dot.err { background: var(--red); }
+  #status { flex: 1; font-size: 12px; color: var(--text2); }
+  #stats { display: flex; gap: 6px; padding: 0 16px 8px; overflow-x: auto; scrollbar-width: none; }
+  #stats::-webkit-scrollbar { display: none; }
+  .stat { flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2);
+    padding: 4px 10px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+  .stat b { color: var(--text); font-weight: 600; }
+  #devices { display: flex; gap: 6px; overflow-x: auto; padding: 0 16px 8px; scrollbar-width: none; }
+  #devices::-webkit-scrollbar { display: none; }
+  .chip { flex-shrink: 0; padding: 7px 14px; border-radius: 8px; background: var(--surface2);
+    color: var(--text2); font-size: 12.5px; font-weight: 600; border: 1px solid var(--border);
+    cursor: pointer; white-space: nowrap; transition: all .2s; }
+  .chip.active { background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-color: var(--accent); color: #fff; box-shadow: 0 2px 12px rgba(91,141,239,.3); }
+  .chip.empty { opacity: .5; }
+  #stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center;
+    justify-content: center; background: #050810; overflow: hidden; }
+  #screen { max-width: 100%; max-height: 100%; object-fit: contain; display: none; touch-action: none; }
+  #placeholder { color: var(--text2); font-size: 14px; text-align: center; padding: 24px; line-height: 2; }
+  #placeholder .big { font-size: 44px; display: block; margin-bottom: 8px; opacity: .3; }
+  #fps { position: absolute; top: 10px; left: 12px; background: rgba(5,8,16,.7); color: var(--text2);
+    font-size: 11px; padding: 4px 10px; border-radius: 6px; backdrop-filter: blur(10px); }
+  #bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(19,24,38,.95); backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border); }
+  button { min-height: 50px; border: none; border-radius: 14px; font-size: 12px; font-weight: 600;
+    background: var(--surface2); color: var(--text); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px; transition: all .15s; cursor: pointer; }
+  button:active { transform: scale(.95); }
+  button .ic { font-size: 18px; line-height: 1; }
+  button.danger { background: rgba(248,81,73,.15); color: var(--red); }
+  button.warn { background: rgba(240,136,62,.15); color: var(--orange); }
+  button.primary { background: var(--accent); color: #fff; }
+  #toast { position: fixed; left: 50%; top: 16%; transform: translateX(-50%) translateY(-10px);
+    background: rgba(26,32,51,.98); color: var(--text); padding: 11px 20px; border-radius: 12px;
+    font-size: 14px; opacity: 0; pointer-events: none; transition: all .25s;
+    border: 1px solid var(--border); max-width: 86%; text-align: center; z-index: 100;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 50; backdrop-filter: blur(2px); }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 51; background: var(--surface);
+    border-radius: 20px 20px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 40px rgba(0,0,0,.5); max-height: 85vh; overflow-y: auto; }
+  .sheet h3 { font-size: 16px; margin-bottom: 16px; font-weight: 700; }
+  .section { margin-bottom: 18px; }
+  .section-title { font-size: 11px; color: var(--text2); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .row button { flex: 1; min-height: 44px; }
+  .sheet input[type=text] { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 14px; margin-bottom: 8px; outline: none; }
+  .sheet input[type=text]:focus { border-color: var(--accent); }
+  .label { font-size: 12px; color: var(--text2); margin: 8px 0 4px; }
+  #touchpad { width: 100%; height: 180px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 14px; touch-action: none; display: flex; align-items: center;
+    justify-content: center; color: var(--text2); font-size: 13px; margin-bottom: 8px; }
+  #file-list { background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    max-height: 180px; overflow-y: auto; margin-bottom: 8px; }
+  #file-list div { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px;
+    display: flex; justify-content: space-between; }
+  #file-list div:last-child { border-bottom: none; }
+  #proof-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 200px; overflow-y: auto; margin-bottom: 8px; }
+  #token-box { position: fixed; inset: 0; z-index: 200; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
+  #token-box input { width: 100%; max-width: 340px; padding: 14px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 15px; outline: none; }
+  #token-box button { width: 100%; max-width: 340px; background: var(--accent); color: #fff;
+    border-radius: 12px; min-height: 48px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <div id="row1">
+      <span class="logo">电脑监控</span>
+      <span id="dot" class="dot"></span>
+      <span id="status">连接中…</span>
+    </div>
+  </div>
+  <div id="stats">
+    <span class="stat">CPU <b id="st-cpu">--</b></span>
+    <span class="stat">内存 <b id="st-mem">--</b></span>
+    <span class="stat">↑<b id="st-up">--</b></span>
+    <span class="stat">↓<b id="st-down">--</b></span>
+    <span class="stat" id="st-presence" style="color:var(--red)">● 离开</span>
+    <span class="stat">⏱<b id="st-time">--</b></span>
+  </div>
+  <div id="devices"><div class="chip empty">等待设备…</div></div>
+  <div id="stage">
+    <img id="screen" alt="实时画面">
+    <button id="touch-toggle" style="position:absolute;top:10px;right:12px;z-index:5;background:rgba(5,8,16,.7);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;min-height:30px;flex-direction:row;gap:4px;">🖱 触控</button>
+    <div id="fps" class="hidden"></div>
+    <div id="placeholder"><span class="big">▣</span>等待电脑端上线</div>
+  </div>
+  <div id="bar">
+    <button id="btn-screen"><span class="ic">🖥</span>屏幕</button>
+    <button id="btn-cam"><span class="ic">📷</span>摄像头</button>
+    <button id="btn-full"><span class="ic">⛶</span>全屏</button>
+    <button id="btn-ov"><span class="ic">📢</span>字幕</button>
+    <button id="btn-more"><span class="ic">⚙</span>更多</button>
+  </div>
+  <div id="toast"></div>
+  <div id="more-mask" class="mask hidden"></div>
+  <div id="more-panel" class="sheet hidden">
+    <h3>远程控制</h3>
+    <div class="section">
+      <div class="section-title">系统</div>
+      <div class="row">
+        <button id="act-snap">📷 截图</button>
+        <button id="act-lock" class="warn">🔒 锁屏</button>
+        <button id="act-cancel">取消关机</button>
+      </div>
+      <div class="row">
+        <button id="act-reboot" class="warn">🔄 重启</button>
+        <button id="act-shutdown" class="danger">⏻ 关机</button>
+        <button id="act-blackout">🌑 黑屏</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">输入</div>
+      <input type="text" id="open-target" placeholder="打开网址或路径" />
+      <div class="row"><button id="act-open" class="primary">打开</button></div>
+      <input type="text" id="clip-text" placeholder="复制文字到电脑剪贴板" />
+      <div class="row"><button id="act-clip" class="primary">发送到剪贴板</button></div>
+    </div>
+    <div class="section">
+      <div class="section-title">鼠标触控板</div>
+      <div id="touchpad">滑动移动 · 单击=左键 · 双击=右键</div>
+    </div>
+    <div class="section">
+      <div class="section-title">语音喊话 (TTS)</div>
+      <input type="text" id="tts-text" placeholder="电脑会念这段话">
+      <div class="row"><button id="tts-send" class="primary">🔊 播放</button></div>
+    </div>
+    <div class="section">
+      <div class="section-title">弹窗气泡</div>
+      <input type="text" id="popup-text" placeholder="屏幕角落弹个气泡">
+      <div class="row"><button id="popup-send" class="primary">弹出</button></div>
+    </div>
+    <div class="section">
+      <div class="section-title">闹钟提醒</div>
+      <input type="text" id="alarm-text" placeholder="提醒内容，如：该休息了">
+      <div class="row">
+        <button id="alarm-1">1分钟</button>
+        <button id="alarm-5">5分钟</button>
+        <button id="alarm-10">10分钟</button>
+        <button id="alarm-30">30分钟</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">涂鸦（在屏幕上画）</div>
+      <div class="row">
+        <button id="draw-mode" class="primary">✏️ 开始画</button>
+        <button id="draw-clear">清空</button>
+      </div>
+      <div class="label">颜色</div>
+      <div id="draw-colors" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">音量 / 亮度</div>
+      <div class="row">
+        <button id="vol-up">🔊 音量+</button>
+        <button id="vol-down">🔉 音量-</button>
+        <button id="vol-mute">🔇 静音</button>
+      </div>
+      <div class="label">亮度 <span id="br-val">70</span>%</div>
+      <input type="range" id="br-slider" min="10" max="100" value="70" style="width:100%;margin-bottom:8px;">
+    </div>
+    <div class="section">
+      <div class="section-title">定时截图存证</div>
+      <div class="row">
+        <button id="proof-off">关闭</button>
+        <button id="proof-5">5分钟</button>
+        <button id="proof-15">15分钟</button>
+        <button id="proof-30">30分钟</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">进程管理</div>
+      <div class="row"><button id="btn-proc" class="primary">刷新进程列表</button></div>
+      <div id="proc-list" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">快捷键</div>
+      <div class="row">
+        <button id="sc-cc">Ctrl+C</button>
+        <button id="sc-cv">Ctrl+V</button>
+        <button id="sc-cx">Ctrl+X</button>
+      </div>
+      <div class="row">
+        <button id="sc-cz">Ctrl+Z</button>
+        <button id="sc-at">Alt+Tab</button>
+        <button id="sc-wd">Win+D</button>
+      </div>
+      <div class="row">
+        <button id="sc-enter">Enter</button>
+        <button id="sc-back">退格</button>
+        <button id="sc-esc">Esc</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">远程键盘（打字到电脑）</div>
+      <input type="text" id="kb-input" placeholder="在这里打字，实时发送到电脑" autocomplete="off">
+    </div>
+    <div class="section">
+      <div class="section-title">演示 / PPT</div>
+      <div class="row">
+        <button id="key-left" class="primary">◀ 上一页</button>
+        <button id="key-right" class="primary">下一页 ▶</button>
+      </div>
+      <div class="row">
+        <button id="key-f5">开始放映</button>
+        <button id="key-esc">退出</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">文件管理</div>
+      <input type="text" id="file-path" placeholder="路径，如 C:\Users\35722\Desktop" />
+      <div class="row"><button id="act-list">浏览目录</button></div>
+      <div id="file-list"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">截图存证</div>
+      <div class="row"><button id="btn-proof" class="primary">📸 截一张存到服务器</button></div>
+      <div id="proof-grid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">其他</div>
+      <input type="file" id="wp-file" accept="image/*" style="font-size:12px;color:var(--text2);margin-bottom:8px;">
+      <div class="row"><button id="act-chat" class="primary">💬 打开聊天</button></div>
+      <div class="row"><button id="more-close">关闭</button></div>
+    </div>
+  </div>
+  <div id="chat-mask" class="mask hidden"></div>
+  <div id="chat-panel" class="sheet hidden">
+    <h3>与电脑前的人聊天</h3>
+    <div id="chat-log" style="background:var(--bg);border:1px solid var(--border);border-radius:14px;
+      height:240px;overflow-y:auto;padding:12px;margin-bottom:10px;font-size:14px;line-height:1.7;"></div>
+    <input type="text" id="chat-input" placeholder="输入消息，回车发送" />
+    <div class="row" style="margin-top:8px;">
+      <button id="chat-close">关闭</button>
+      <button id="chat-send" class="primary">发送</button>
+    </div>
+  </div>
+  <div id="ov-mask" class="mask hidden"></div>
+  <div id="ov-panel" class="sheet hidden">
+    <h3>发送屏幕字幕</h3>
+    <input type="text" id="ov-text" placeholder="要在电脑屏幕上滚动的文字" maxlength="50" />
+    <div class="section">
+      <div class="section-title">背景颜色</div>
+      <div id="ov-bg" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">文字颜色</div>
+      <div id="ov-fg" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">位置</div>
+      <div id="ov-pos" style="display:flex;gap:8px;"></div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <label style="flex:1;font-size:12px;color:var(--text2);">速度 <span id="ov-speed-v">中</span>
+        <input type="range" id="ov-speed" min="2" max="20" value="8" style="width:100%;">
+      </label>
+      <label style="flex:1;font-size:12px;color:var(--text2);">时长 <span id="ov-dur-v">10</span> 秒
+        <input type="range" id="ov-duration" min="3" max="60" value="10" style="width:100%;">
+      </label>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button id="ov-cancel">取消</button>
+      <button id="ov-send" class="primary">发送</button>
+    </div>
+  </div>
+  <div id="token-box" class="hidden">
+    <div style="font-size:18px;font-weight:700;">电脑监控</div>
+    <input id="token-input" type="password" placeholder="输入 Token" autocomplete="off">
+    <button id="btn-token">进入</button>
+  </div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var img = $('screen'), ph = $('placeholder'), fpsEl = $('fps');
+  var dot = $('dot'), status = $('status'), toastEl = $('toast'), devBar = $('devices');
+  var ws = null, token = localStorage.getItem('mt_token') || '';
+  var blobUrl = null, selected = null, fpsWindow = [], toastTimer = null, lastHeader = null;
+  var selBg = '#ff3b30', selFg = '#ffffff';
+  function setStatus(t, c) { status.textContent = t; dot.className = 'dot' + (c ? ' ' + c : ''); }
+  function toast(t) {
+    toastEl.textContent = t; toastEl.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2600);
+  }
+  function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+  function renderDevices(list) {
+    devBar.innerHTML = '';
+    if (!list.length) {
+      devBar.innerHTML = '<div class="chip empty">暂无在线电脑</div>';
+      ph.style.display = 'block'; img.style.display = 'none'; fpsEl.classList.add('hidden');
+      return;
+    }
+    if (!list.some(function (d) { return d.name === selected; })) {
+      selected = list[0].name; send({type:'select', name: selected});
+    }
+    list.forEach(function (d) {
+      if (d.screen_w) scW = d.screen_w;
+      if (d.screen_h) scH = d.screen_h;
+      var c = document.createElement('div');
+      c.className = 'chip' + (d.name === selected ? ' active' : '');
+      var os = {windows:'Win', darwin:'Mac', linux:'Linux'}[d.os] || d.os;
+      c.textContent = d.name + ' · ' + os;
+      c.onclick = function () { selected = d.name; send({type:'select', name: selected}); renderDevices(list); };
+      devBar.appendChild(c);
+    });
+  }
+  function connect() {
+    if (!token) { $('token-box').classList.remove('hidden'); return; }
+    setStatus('连接中…', '');
+    var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    ws = new WebSocket(proto + location.host + '/ws?token=' + encodeURIComponent(token) + '&role=viewer');
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = function () { setStatus('已连接', 'on'); };
+    ws.onclose = function () { setStatus('断开重连…', 'err'); setTimeout(connect, 3000); };
+    ws.onerror = function () { try { ws.close(); } catch(e){} };
+    ws.onmessage = function (ev) {
+      if (typeof ev.data === 'string') {
+        var m = JSON.parse(ev.data);
+        if (m.type === 'devices') renderDevices(m.list);
+        else if (m.type === 'toast') toast(m.text);
+        else if (m.type === 'frame') { lastHeader = {source: m.source, agent: m.agent}; }
+        else if (m.type === 'stats') {
+          $('st-cpu').textContent = m.cpu >= 0 ? m.cpu + '%' : '--';
+          $('st-mem').textContent = m.mem >= 0 ? m.mem + '%' : '--';
+          $('st-up').textContent = m.up_kbps;
+          $('st-down').textContent = m.down_kbps;
+          var s = m.uptime, h = Math.floor(s/3600), m2 = Math.floor(s%3600/60);
+          $('st-time').textContent = (h>0?h+'h ':'') + m2 + 'm';
+          var p = $('st-presence');
+          p.textContent = m.active ? '● 在岗' : '● 离开';
+          p.style.color = m.active ? 'var(--green)' : 'var(--red)';
+        }
+        else if (m.type === 'motion') toast('⚠ ' + m.text);
+        else if (m.type === 'chat') { addChatMsg('电脑', m.text); toast('💬 电脑: ' + m.text); }
+        else if (m.type === 'dir_list') renderDir(m);
+        else if (m.type === 'file_data') downloadFile(m);
+        else if (m.type === 'process_list') renderProcs(m);
+        return;
+      }
+      if (!lastHeader || lastHeader.agent !== selected) return;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      blobUrl = URL.createObjectURL(new Blob([ev.data], {type:'image/jpeg'}));
+      img.src = blobUrl; img.style.display = 'block'; ph.style.display = 'none';
+      fpsEl.classList.remove('hidden');
+      var now = Date.now(); fpsWindow.push(now);
+      while (fpsWindow.length && now - fpsWindow[0] > 2000) fpsWindow.shift();
+      fpsEl.textContent = '📡 ' + (fpsWindow.length/2).toFixed(1) + ' fps · ' + lastHeader.source;
+    };
+  }
+  $('btn-token').onclick = function () {
+    token = $('token-input').value.trim();
+    if (!token) return;
+    localStorage.setItem('mt_token', token);
+    $('token-box').classList.add('hidden'); connect();
+  };
+  $('token-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btn-token').click(); });
+  $('btn-screen').onclick = function () { send({type:'set_source', source:'screen'}); };
+  $('btn-cam').onclick = function () { send({type:'set_source', source:'camera'}); };
+  $('btn-more').onclick = function () {
+    $('more-mask').classList.remove('hidden'); $('more-panel').classList.remove('hidden');
+  };
+  function closeMore() { $('more-mask').classList.add('hidden'); $('more-panel').classList.add('hidden'); }
+  $('more-mask').onclick = closeMore;
+  $('more-close').onclick = closeMore;
+  function addChatMsg(who, text) {
+    var log = $('chat-log');
+    var div = document.createElement('div');
+    div.innerHTML = (who === '我' ? '<b style="color:#7c9eff">我</b>' : '<b style="color:#3fb950">电脑</b>') + '：' + text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+  $('act-chat').onclick = function () {
+    closeMore();
+    $('chat-mask').classList.remove('hidden'); $('chat-panel').classList.remove('hidden');
+  };
+  function closeChat() { $('chat-mask').classList.add('hidden'); $('chat-panel').classList.add('hidden'); }
+  $('chat-close').onclick = closeChat;
+  $('chat-mask').onclick = closeChat;
+  $('chat-send').onclick = function () {
+    var t = $('chat-input').value.trim();
+    if (!t) return;
+    send({type:'chat', text: t});
+    addChatMsg('我', t);
+    $('chat-input').value = '';
+  };
+  $('chat-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('chat-send').click(); });
+  ['key-left','key-right','key-f5','key-esc'].forEach(function (id) {
+    $(id).onclick = function () { send({type:'key', key: id.replace('key-', '')}); };
+  });
+  function loadProof() {
+    if (!selected) { toast('先选一台设备'); return; }
+    fetch('/proof_list?agent=' + encodeURIComponent(selected) + '&date=' + new Date().toISOString().slice(0,10))
+      .then(r => r.json()).then(d => {
+        var g = $('proof-grid'); g.innerHTML = '';
+        if (!d.files.length) { g.innerHTML = '<div style="color:var(--text2);font-size:12px">还没有存证截图</div>'; return; }
+        d.files.slice().reverse().forEach(function (u) {
+          var im = document.createElement('img');
+          im.src = u; im.style.cssText = 'width:48%;border-radius:8px;border:1px solid var(--border);';
+          im.onclick = function () { window.open(u, '_blank'); };
+          g.appendChild(im);
+        });
+      });
+  }
+  $('btn-proof').onclick = function () {
+    send({type:'snapshot'});
+    toast('正在截图...');
+    setTimeout(loadProof, 1500);
+  };
+  $('wp-file').onchange = function () {
+    var f = this.files[0];
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { toast('图片太大，请选 8MB 以内'); return; }
+    var r = new FileReader();
+    r.onload = function () { send({type:'wallpaper', data: r.result.split(',')[1]}); toast('壁纸已发送'); };
+    r.readAsDataURL(f);
+  };
+  $('act-snap').onclick = function () {
+    if (!blobUrl) { toast('还没有画面'); return; }
+    var a = document.createElement('a');
+    a.href = blobUrl; a.download = 'snap-' + Date.now() + '.jpg'; a.click();
+  };
+  $('act-lock').onclick = function () { send({type:'exec', action:'lock'}); toast('已发送锁屏'); closeMore(); };
+  $('act-shutdown').onclick = function () {
+    if (confirm('确定让电脑 5 秒后关机？')) { send({type:'exec', action:'shutdown'}); closeMore(); }
+  };
+  $('act-reboot').onclick = function () {
+    if (confirm('确定让电脑 5 秒后重启？')) { send({type:'exec', action:'reboot'}); closeMore(); }
+  };
+  $('act-cancel').onclick = function () { send({type:'exec', action:'cancel_shutdown'}); toast('已取消关机'); };
+  $('act-blackout').onclick = function () { send({type:'blackout', on:true}); toast('黑屏已开启'); };
+  $('act-open').onclick = function () {
+    var t = $('open-target').value.trim();
+    if (!t) return; send({type:'open_path', target:t}); toast('已打开');
+  };
+  $('act-clip').onclick = function () {
+    var t = $('clip-text').value.trim();
+    if (!t) return; send({type:'clipboard', text:t}); toast('已复制');
+  };
+  var touchOn = false;
+  $('touch-toggle').onclick = function(e) {
+    e.stopPropagation();
+    touchOn = !touchOn;
+    this.style.background = touchOn ? 'var(--accent)' : 'rgba(5,8,16,.7)';
+    this.style.color = touchOn ? '#fff' : 'var(--text2)';
+    toast(touchOn ? '触控已开启' : '触控已关闭');
+  };
+  var scW = 1920, scH = 1080;
+  var imgEl = $('screen');
+  imgEl.addEventListener('touchstart', function(e) {
+    if (!touchOn && !drawOn) return;
+    e.preventDefault();
+    var t = e.touches[0];
+    var rect = imgEl.getBoundingClientRect();
+    var rx = (t.clientX - rect.left) / rect.width;
+    var ry = (t.clientY - rect.top) / rect.height;
+    var px = Math.round(rx * scW), py = Math.round(ry * scH);
+    if (drawOn) { drawLast = {x: px, y: py}; return; }
+    send({type:'mouse', x: px, y: py, click:'left'});
+  }, {passive: false});
+  imgEl.addEventListener('touchmove', function(e) {
+    if (!touchOn && !drawOn) return;
+    e.preventDefault();
+    var t = e.touches[0];
+    var rect = imgEl.getBoundingClientRect();
+    var rx = (t.clientX - rect.left) / rect.width;
+    var ry = (t.clientY - rect.top) / rect.height;
+    var px = Math.round(rx * scW), py = Math.round(ry * scH);
+    if (drawOn) {
+      if (drawLast) send({type:'draw', x1:drawLast.x, y1:drawLast.y, x2:px, y2:py, color:drawColor});
+      drawLast = {x: px, y: py};
+      return;
+    }
+    send({type:'mouse', x: px, y: py});
+  }, {passive: false});
+  var lastTapT = 0;
+  imgEl.addEventListener('touchend', function(e) {
+    if (!touchOn && !drawOn) return;
+    drawLast = null;
+    if (drawOn) return;
+    var now = Date.now();
+    if (now - lastTapT < 300) {
+      var t = e.changedTouches[0];
+      var rect = imgEl.getBoundingClientRect();
+      var rx = (t.clientX - rect.left) / rect.width;
+      var ry = (t.clientY - rect.top) / rect.height;
+      send({type:'mouse', x: Math.round(rx * scW), y: Math.round(ry * scH), click:'right'});
+    }
+    lastTapT = now;
+  });
+  $('tts-send').onclick = function () {
+    var t = $('tts-text').value.trim();
+    if (!t) return;
+    send({type:'tts', text: t}); toast('正在播放...');
+  };
+  $('popup-send').onclick = function () {
+    var t = $('popup-text').value.trim();
+    if (!t) return;
+    send({type:'popup', text: t, duration: 5}); toast('已发送弹窗');
+  };
+  $('alarm-1').onclick = function () { send({type:'alarm', delay: 60, text: $('alarm-text').value.trim() || '闹钟提醒'}); toast('1分钟后提醒'); };
+  $('alarm-5').onclick = function () { send({type:'alarm', delay: 300, text: $('alarm-text').value.trim() || '闹钟提醒'}); toast('5分钟后提醒'); };
+  $('alarm-10').onclick = function () { send({type:'alarm', delay: 600, text: $('alarm-text').value.trim() || '闹钟提醒'}); toast('10分钟后提醒'); };
+  $('alarm-30').onclick = function () { send({type:'alarm', delay: 1800, text: $('alarm-text').value.trim() || '闹钟提醒'}); toast('30分钟后提醒'); };
+  var drawOn = false, drawColor = '#ff3b30', drawLast = null;
+  var DRAW_COLORS = ['#ff3b30','#ff9500','#ffcc00','#34c759','#007aff','#af52de','#ffffff'];
+  var dcEl = $('draw-colors');
+  DRAW_COLORS.forEach(function(c) {
+    var d = document.createElement('div');
+    d.style.cssText = 'width:28px;height:28px;border-radius:6px;cursor:pointer;border:2px solid ' + (c===drawColor?'#fff':'transparent') + ';background:' + c;
+    d.onclick = function() { drawColor = c; dcEl.querySelectorAll('div').forEach(function(x){x.style.borderColor='transparent';}); d.style.borderColor='#fff'; };
+    dcEl.appendChild(d);
+  });
+  $('draw-mode').onclick = function() {
+    drawOn = !drawOn;
+    this.style.background = drawOn ? '#ff3b30' : 'var(--accent)';
+    toast(drawOn ? '涂鸦模式：在画面上画' : '涂鸦已关闭');
+  };
+  $('draw-clear').onclick = function() { send({type:'draw_clear'}); };
+  $('vol-up').onclick = function () { sendKey('volume_up'); };
+  $('vol-down').onclick = function () { sendKey('volume_down'); };
+  $('vol-mute').onclick = function () { sendKey('volume_mute'); };
+  $('br-slider').oninput = function () { $('br-val').textContent = this.value; };
+  $('br-slider').onchange = function () { send({type:'brightness', level: +this.value}); toast('亮度: ' + this.value + '%'); };
+  $('proof-off').onclick = function () { send({type:'proof_interval', seconds: 0}); toast('自动存证已关闭'); };
+  $('proof-5').onclick = function () { send({type:'proof_interval', seconds: 300}); toast('每5分钟自动截图'); };
+  $('proof-15').onclick = function () { send({type:'proof_interval', seconds: 900}); toast('每15分钟自动截图'); };
+  $('proof-30').onclick = function () { send({type:'proof_interval', seconds: 1800}); toast('每30分钟自动截图'); };
+  $('btn-proc').onclick = function () { send({type:'process_list'}); toast('正在获取...'); };
+  function sendKey(key, mods) { send({type:'key', key: key, modifiers: mods || []}); }
+  $('sc-cc').onclick = function () { sendKey('c', ['ctrl']); };
+  $('sc-cv').onclick = function () { sendKey('v', ['ctrl']); };
+  $('sc-cx').onclick = function () { sendKey('x', ['ctrl']); };
+  $('sc-cz').onclick = function () { sendKey('z', ['ctrl']); };
+  $('sc-at').onclick = function () { sendKey('tab', ['alt']); };
+  $('sc-wd').onclick = function () { sendKey('d', ['win']); };
+  $('sc-enter').onclick = function () { sendKey('enter'); };
+  $('sc-back').onclick = function () { sendKey('backspace'); };
+  $('sc-esc').onclick = function () { sendKey('esc'); };
+  var kbEl = $('kb-input');
+  kbEl.addEventListener('keydown', function(e) {
+    e.preventDefault();
+    if (e.key === 'Enter') { sendKey('enter'); }
+    else if (e.key === 'Backspace') { sendKey('backspace'); this.value = this.value.slice(0, -1); }
+    else if (e.key === 'Tab') { sendKey('tab'); }
+    else if (e.key === 'Escape') { sendKey('esc'); }
+    else if (e.key === ' ') { sendKey('space'); }
+    else if (e.key.length === 1) { send({type:'key', char: e.key}); this.value += e.key; }
+  });
+  var lastTouch = null;
+  var tp = $('touchpad');
+  tp.addEventListener('touchstart', function (e) { var t = e.touches[0]; lastTouch = {x: t.clientX, y: t.clientY}; });
+  tp.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    if (!lastTouch) return;
+    var t = e.touches[0];
+    send({type:'mouse', dx: (t.clientX - lastTouch.x) * 2, dy: (t.clientY - lastTouch.y) * 2, click: 'none'});
+    lastTouch = {x: t.clientX, y: t.clientY};
+  }, {passive: false});
+  var lastTap = 0;
+  tp.addEventListener('touchend', function () {
+    var now = Date.now();
+    if (now - lastTap < 300) send({type:'mouse', dx:0, dy:0, click:'right'});
+    else send({type:'mouse', dx:0, dy:0, click:'left'});
+    lastTap = now; lastTouch = null;
+  });
+  $('act-list').onclick = function () { var p = $('file-path').value.trim(); send({type:'list_dir', path: p}); };
+  function renderProcs(m) {
+    var box = $('proc-list'); box.innerHTML = '';
+    if (!m.processes || !m.processes.length) { box.innerHTML = '<div style="color:var(--text2);padding:10px;">无进程</div>'; return; }
+    m.processes.forEach(function(p) {
+      var d = document.createElement('div');
+      d.style.cssText = 'padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;';
+      d.innerHTML = '<span>' + p.name + '</span><span style="color:var(--text2);">CPU ' + p.cpu + '% · MEM ' + p.mem + '%</span>';
+      d.onclick = function() {
+        if (confirm('结束进程 ' + p.name + ' (PID ' + p.pid + ')?')) {
+          send({type:'kill_process', pid: p.pid});
+          toast('已发送结束指令');
+          setTimeout(function(){ send({type:'process_list'}); }, 1000);
+        }
+      };
+      box.appendChild(d);
+    });
+  }
+  function renderDir(m) {
+    var box = $('file-list'); box.innerHTML = '';
+    if (m.error) { box.innerHTML = '<div style="color:var(--red);">' + m.error + '</div>'; return; }
+    var up = document.createElement('div');
+    up.innerHTML = '<span>⬆ 上级目录</span><span></span>';
+    up.onclick = function () {
+      var parts = m.cwd.replace(/\\/g,'/').split('/'); parts.pop();
+      $('file-path').value = parts.join('/') || '/';
+      send({type:'list_dir', path: $('file-path').value});
+    };
+    box.appendChild(up);
+    m.entries.forEach(function (e) {
+      var d = document.createElement('div');
+      d.innerHTML = '<span>' + (e.is_dir?'📁':'📄') + ' ' + e.name + '</span><span style="color:var(--text2);">' + (e.is_dir?'':(e.size/1024).toFixed(1)+'KB') + '</span>';
+      d.onclick = function () {
+        if (e.is_dir) { var np = (m.cwd + '/' + e.name).replace(/\\/g,'/'); $('file-path').value = np; send({type:'list_dir', path: np}); }
+        else { send({type:'download', path: m.cwd + '/' + e.name}); }
+      };
+      box.appendChild(d);
+    });
+  }
+  function downloadFile(m) {
+    if (m.error) { toast('下载失败: ' + m.error); return; }
+    var bin = atob(m.data);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var blob = new Blob([bytes], {type: 'application/octet-stream'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = m.name; a.click();
+    URL.revokeObjectURL(url);
+    toast('已下载: ' + m.name);
+  }
+  var BG = ['#ff3b30','#ff9500','#ffcc00','#34c759','#007aff','#af52de','#1c1c1e'];
+  var FG = ['#ffffff','#000000','#ff3b30','#ffcc00','#34c759','#ff9500'];
+  function swatches(elId, colors, cur, cb) {
+    var el = $(elId); el.innerHTML = '';
+    colors.forEach(function (c) {
+      var d = document.createElement('div');
+      d.style.cssText = 'width:30px;height:30px;border-radius:8px;cursor:pointer;border:2px solid ' + (c===cur?'#fff':'transparent') + ';background:' + c;
+      d.onclick = function () { cb(c); swatches(elId, colors, c, cb); };
+      el.appendChild(d);
+    });
+  }
+  var selPos = 'middle';
+  var POS_OPTS = [['top','顶部'],['middle','中间'],['bottom','底部']];
+  function renderPos() {
+    var el = $('ov-pos'); el.innerHTML = '';
+    POS_OPTS.forEach(function (p) {
+      var d = document.createElement('div');
+      d.textContent = p[1];
+      d.style.cssText = 'flex:1;text-align:center;padding:8px;border-radius:8px;cursor:pointer;border:1px solid ' + (p[0]===selPos ? 'var(--accent)' : 'var(--border)') + ';background:' + (p[0]===selPos ? 'var(--accent)' : 'var(--surface2)') + ';font-size:13px;';
+      d.onclick = function () { selPos = p[0]; renderPos(); };
+      el.appendChild(d);
+    });
+  }
+  $('btn-ov').onclick = function () {
+    swatches('ov-bg', BG, selBg, function (c) { selBg = c; });
+    swatches('ov-fg', FG, selFg, function (c) { selFg = c; });
+    renderPos();
+    $('ov-mask').classList.remove('hidden'); $('ov-panel').classList.remove('hidden');
+  };
+  function closeOv() { $('ov-mask').classList.add('hidden'); $('ov-panel').classList.add('hidden'); }
+  $('ov-mask').onclick = closeOv;
+  $('ov-cancel').onclick = closeOv;
+  $('ov-speed').oninput = function () { var v = +this.value; $('ov-speed-v').textContent = v < 6 ? '慢' : v < 12 ? '中' : '快'; };
+  $('ov-duration').oninput = function () { $('ov-dur-v').textContent = this.value; };
+  $('ov-send').onclick = function () {
+    var t = $('ov-text').value.trim();
+    if (!t) { toast('先输入文字'); return; }
+    send({type:'overlay', text:t, color:selFg, bg:selBg, speed:+$('ov-speed').value, duration:+$('ov-duration').value, pos:selPos});
+    closeOv();
+  };
+  connect();
+})();
+</script>
+</body>
+</html>
