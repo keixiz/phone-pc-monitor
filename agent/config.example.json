@@ -1,0 +1,8 @@
+{
+  "server": "wss://你的域名/ws",
+  "token": "和服务器 config.json 保持一致",
+  "source": "screen",
+  "fps": 3,
+  "camera_index": 0,
+  "jpeg_quality": 70
+}
