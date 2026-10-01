@@ -3,216 +3,340 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0e1a">
-<title>电脑监控</title>
+<meta name="theme-color" content="#070a12">
+<title>Monitor Console</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070a12'/%3E%3Crect x='10' y='14' width='44' height='30' rx='6' fill='none' stroke='%236d8dff' stroke-width='5'/%3E%3Cline x1='24' y1='54' x2='40' y2='54' stroke='%236d8dff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #0a0e1a;
-    --surface: #131826;
-    --surface2: #1a2033;
-    --border: #252d42;
-    --text: #e6eaf2;
-    --text2: #8b95b0;
-    --accent: #5b8def;
-    --accent2: #7c9eff;
-    --green: #3fb950;
-    --red: #f85149;
-    --orange: #f0883e;
+    --bg: #070a12;
+    --bg2: #0b101d;
+    --glass: rgba(255,255,255,.045);
+    --glass2: rgba(255,255,255,.075);
+    --border: rgba(255,255,255,.09);
+    --border2: rgba(255,255,255,.16);
+    --text: #eef1f8;
+    --text2: #8d97ad;
+    --text3: #5b657c;
+    --acc: #6d8dff;
+    --acc2: #a06bff;
+    --green: #3ddc84;
+    --red: #ff5c6a;
+    --orange: #ffb454;
+    --shadow: 0 12px 40px rgba(0,0,0,.5);
+    --r: 16px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
-  body { display: flex; flex-direction: column; background: var(--bg); color: var(--text);
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
-
-  /* 顶栏 */
-  #topbar {
-    padding: calc(12px + env(safe-area-inset-top)) 16px 8px;
-    background: linear-gradient(180deg, rgba(19,24,38,.95), rgba(10,14,26,.8));
-    backdrop-filter: blur(20px);
+  body {
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  #row1 { display: flex; align-items: center; gap: 10px; }
-  .logo { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); flex-shrink: 0;
-    box-shadow: 0 0 10px currentColor; transition: all .3s; }
-  .dot.on { background: var(--green); }
-  .dot.err { background: var(--red); }
-  #status { flex: 1; font-size: 12px; color: var(--text2); }
+  /* 背景光晕 */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(42% 38% at 88% -6%, rgba(109,141,255,.16), transparent 70%),
+      radial-gradient(38% 34% at -8% 108%, rgba(160,107,255,.12), transparent 70%);
+  }
+  .ic { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .ic-sm { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 
-  /* 状态条 */
-  #stats { display: flex; gap: 6px; padding: 0 16px 8px; overflow-x: auto; scrollbar-width: none; }
+  /* ===== 顶栏 ===== */
+  #topbar { position: relative; z-index: 5; padding: calc(12px + env(safe-area-inset-top)) 18px 10px; }
+  .tb-row { display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand .logo-badge {
+    width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
+    box-shadow: 0 4px 18px rgba(109,141,255,.4); flex-shrink: 0;
+  }
+  .brand .logo-badge svg { width: 19px; height: 19px; }
+  .brand b { font-size: 15px; font-weight: 700; letter-spacing: .2px; white-space: nowrap; }
+  .brand small { display: block; font-size: 10px; color: var(--text3); font-weight: 500; letter-spacing: .4px; margin-top: 1px; }
+  .tb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  #conn { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2);
+    background: var(--glass); border: 1px solid var(--border); padding: 5px 12px; border-radius: 999px; backdrop-filter: blur(12px); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); transition: all .3s; }
+  .dot.on { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .dot.err { background: var(--red); box-shadow: 0 0 10px var(--red); }
+  .icon-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--glass); color: var(--text2); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all .18s; backdrop-filter: blur(12px); }
+  .icon-btn:active { transform: scale(.92); }
+  .icon-btn:hover { color: var(--text); border-color: var(--border2); background: var(--glass2); }
+
+  /* ===== 状态条 ===== */
+  #stats { position: relative; z-index: 4; display: flex; gap: 8px; padding: 0 18px 8px; overflow-x: auto; scrollbar-width: none; }
   #stats::-webkit-scrollbar { display: none; }
-  .stat { flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2);
-    padding: 4px 10px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+  .stat { flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text2);
+    background: var(--glass); border: 1px solid var(--border); padding: 5px 12px; border-radius: 10px;
+    font-variant-numeric: tabular-nums; backdrop-filter: blur(10px); }
+  .stat svg { color: var(--text3); }
   .stat b { color: var(--text); font-weight: 600; }
+  .stat.live { color: var(--green); }
+  .stat.live b { color: var(--green); }
 
-  /* 设备选择 */
-  #devices { display: flex; gap: 6px; overflow-x: auto; padding: 0 16px 8px; scrollbar-width: none; }
+  /* ===== 设备 ===== */
+  #devices { position: relative; z-index: 4; display: flex; gap: 8px; padding: 0 18px 10px; overflow-x: auto; scrollbar-width: none; }
   #devices::-webkit-scrollbar { display: none; }
-  .chip { flex-shrink: 0; padding: 7px 14px; border-radius: 8px; background: var(--surface2);
-    color: var(--text2); font-size: 12.5px; font-weight: 600; border: 1px solid var(--border);
-    cursor: pointer; white-space: nowrap; transition: all .2s; }
-  .chip.active { background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-color: var(--accent); color: #fff; box-shadow: 0 2px 12px rgba(91,141,239,.3); }
-  .chip.empty { opacity: .5; }
+  .chip { flex-shrink: 0; display: flex; align-items: center; gap: 7px; padding: 8px 15px; border-radius: 999px;
+    background: var(--glass); color: var(--text2); font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); cursor: pointer; white-space: nowrap; transition: all .2s; backdrop-filter: blur(10px); }
+  .chip svg { width: 14px; height: 14px; color: var(--text3); }
+  .chip.active { background: linear-gradient(135deg, rgba(109,141,255,.2), rgba(160,107,255,.16));
+    border-color: rgba(109,141,255,.55); color: #fff; box-shadow: 0 4px 18px rgba(109,141,255,.18); }
+  .chip.active svg { color: var(--acc); }
+  .chip.empty { opacity: .55; cursor: default; }
 
-  /* 画面区 */
-  #stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center;
-    justify-content: center; background: #050810; overflow: hidden; }
+  /* ===== 画面区 ===== */
+  #stage { position: relative; z-index: 1; flex: 1; min-height: 0; margin: 0 18px; border-radius: var(--r);
+    background: rgba(3,5,10,.7); border: 1px solid var(--border); overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 80px rgba(0,0,0,.55); }
   #screen { max-width: 100%; max-height: 100%; object-fit: contain; display: none; touch-action: none; }
-  #placeholder { color: var(--text2); font-size: 14px; text-align: center; padding: 24px; line-height: 2; }
-  #placeholder .big { font-size: 44px; display: block; margin-bottom: 8px; opacity: .3; }
-  #fps { position: absolute; top: 10px; left: 12px; background: rgba(5,8,16,.7); color: var(--text2);
-    font-size: 11px; padding: 4px 10px; border-radius: 6px; backdrop-filter: blur(10px); }
+  #placeholder { color: var(--text2); font-size: 13.5px; text-align: center; padding: 24px; line-height: 2; }
+  #placeholder .big { width: 52px; height: 52px; color: rgba(255,255,255,.14); display: block; margin: 0 auto 10px; }
+  #fps { position: absolute; top: 12px; left: 12px; z-index: 4; display: flex; align-items: center; gap: 6px;
+    background: rgba(5,8,16,.72); color: var(--green); font-size: 11px; font-weight: 600; letter-spacing: .6px;
+    padding: 5px 11px; border-radius: 999px; backdrop-filter: blur(10px); border: 1px solid rgba(61,220,132,.22); }
+  #fps .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: breath 1.6s ease-in-out infinite; }
+  @keyframes breath { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  #touch-toggle { position: absolute; top: 12px; right: 12px; z-index: 4; display: flex; align-items: center; gap: 6px;
+    min-height: 40px; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    background: rgba(5,8,16,.72); color: var(--text2); border: 1px solid var(--border); cursor: pointer;
+    backdrop-filter: blur(10px); transition: all .2s; }
+  #touch-toggle.on { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; border-color: transparent; }
 
-  /* 底部工具栏 */
-  #bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-    background: rgba(19,24,38,.95); backdrop-filter: blur(20px);
-    border-top: 1px solid var(--border); }
-  button { min-height: 50px; border: none; border-radius: 14px; font-size: 12px; font-weight: 600;
-    background: var(--surface2); color: var(--text); display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 3px; transition: all .15s; cursor: pointer; }
-  button:active { transform: scale(.95); }
-  button .ic { font-size: 18px; line-height: 1; }
-  button.danger { background: rgba(248,81,73,.15); color: var(--red); }
-  button.warn { background: rgba(240,136,62,.15); color: var(--orange); }
-  button.primary { background: var(--accent); color: #fff; }
+  /* ===== 底部工具栏 ===== */
+  #bar { position: relative; z-index: 5; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+    padding: 10px 18px calc(12px + env(safe-area-inset-bottom)); }
+  button.base { border: none; border-radius: 14px; font-size: 11.5px; font-weight: 600;
+    background: var(--glass); color: var(--text); display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 5px; transition: all .16s; cursor: pointer; min-height: 52px;
+    backdrop-filter: blur(12px); border: 1px solid var(--border); }
+  button.base:active { transform: scale(.94); }
+  button.base .ic { color: var(--text2); }
+  button.base:hover { border-color: var(--border2); }
+  button.base.primary { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
+    border-color: transparent; box-shadow: 0 6px 22px rgba(109,141,255,.32); }
+  button.base.primary .ic { color: #fff; }
+  button.base.warn { background: rgba(255,180,84,.12); color: var(--orange); border-color: rgba(255,180,84,.25); }
+  button.base.warn .ic { color: var(--orange); }
+  button.base.danger { background: rgba(255,92,106,.12); color: var(--red); border-color: rgba(255,92,106,.25); }
+  button.base.danger .ic { color: var(--red); }
 
-  /* toast */
-  #toast { position: fixed; left: 50%; top: 16%; transform: translateX(-50%) translateY(-10px);
-    background: rgba(26,32,51,.98); color: var(--text); padding: 11px 20px; border-radius: 12px;
-    font-size: 14px; opacity: 0; pointer-events: none; transition: all .25s;
-    border: 1px solid var(--border); max-width: 86%; text-align: center; z-index: 100;
-    box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+  /* ===== toast ===== */
+  #toast { position: fixed; left: 50%; top: 14%; transform: translateX(-50%) translateY(-8px); z-index: 200;
+    background: rgba(16,21,36,.96); color: var(--text); padding: 11px 20px; border-radius: 12px; font-size: 13.5px;
+    opacity: 0; pointer-events: none; transition: all .25s; border: 1px solid var(--border2); max-width: 86%;
+    text-align: center; box-shadow: var(--shadow); backdrop-filter: blur(16px); }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* 弹窗 */
-  .mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 50; backdrop-filter: blur(2px); }
-  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 51; background: var(--surface);
-    border-radius: 20px 20px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
-    box-shadow: 0 -10px 40px rgba(0,0,0,.5); max-height: 85vh; overflow-y: auto; }
-  .sheet h3 { font-size: 16px; margin-bottom: 16px; font-weight: 700; }
+  /* ===== 弹层 ===== */
+  .mask { position: fixed; inset: 0; background: rgba(2,4,10,.62); z-index: 60; backdrop-filter: blur(3px); }
+  .sheet { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    z-index: 61; width: min(600px, calc(100vw - 24px)); max-height: 86vh; overflow-y: auto; overscroll-behavior: contain;
+    background: linear-gradient(180deg, rgba(20,26,44,.97), rgba(13,17,30,.97));
+    border: 1px solid var(--border2); border-radius: 24px; padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+    box-shadow: var(--shadow); scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
+    animation: slideUp .28s cubic-bezier(.2,.8,.2,1); }
+  @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(26px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+  .sheet::-webkit-scrollbar { width: 5px; }
+  .sheet::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  .sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .sheet-head .grip { width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.14); margin: 0 auto 2px; }
+  .sheet-head h3 { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+  .sheet-head .icon-btn { margin-left: auto; }
   .section { margin-bottom: 18px; }
-  .section-title { font-size: 11px; color: var(--text2); text-transform: uppercase;
-    letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
-  .row { display: flex; gap: 8px; margin-bottom: 8px; }
-  .row button { flex: 1; min-height: 44px; }
-  .sheet input[type=text] { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border);
-    background: var(--bg); color: var(--text); font-size: 14px; margin-bottom: 8px; outline: none; }
-  .sheet input[type=text]:focus { border-color: var(--accent); }
+  .section-title { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text3);
+    letter-spacing: 1.2px; margin-bottom: 9px; font-weight: 700; text-transform: uppercase; }
+  .section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border2), transparent); }
+  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .sheet button.base { min-height: 46px; flex-direction: row; gap: 7px; border-radius: 12px; font-size: 12.5px; }
+  .sheet input[type=text], .sheet input[type=password] { width: 100%; padding: 12px 14px; border-radius: 12px;
+    border: 1px solid var(--border); background: rgba(7,10,18,.7); color: var(--text); font-size: 16px;
+    margin-bottom: 8px; outline: none; transition: border-color .2s; }
+  .sheet input:focus { border-color: var(--acc); }
   .label { font-size: 12px; color: var(--text2); margin: 8px 0 4px; }
-  #touchpad { width: 100%; height: 180px; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 14px; touch-action: none; display: flex; align-items: center;
-    justify-content: center; color: var(--text2); font-size: 13px; margin-bottom: 8px; }
-  #file-list { background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-    max-height: 180px; overflow-y: auto; margin-bottom: 8px; }
-  #file-list div { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px;
-    display: flex; justify-content: space-between; }
-  #file-list div:last-child { border-bottom: none; }
-  #proof-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 200px; overflow-y: auto; margin-bottom: 8px; }
+  #touchpad { width: 100%; height: 170px; background: rgba(7,10,18,.7); border: 1px dashed var(--border2);
+    border-radius: 14px; touch-action: none; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 8px; color: var(--text3); font-size: 12.5px; margin-bottom: 8px; }
+  #touchpad svg { width: 30px; height: 30px; color: var(--text3); opacity: .6; }
+  .list-box { background: rgba(7,10,18,.7); border: 1px solid var(--border); border-radius: 12px;
+    max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
+  .list-box > div { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .list-box > div:last-child { border-bottom: none; }
+  .list-box > div:active { background: rgba(255,255,255,.04); }
+  .file-ic { color: var(--text3); display: inline-flex; }
+  #proof-grid { display: flex; flex-wrap: wrap; gap: 8px; max-height: 210px; overflow-y: auto; margin-bottom: 8px; }
+  .sw { width: 32px; height: 32px; border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: all .15s; }
+  .sw.active { border-color: #fff; transform: scale(1.08); }
+  input[type=range] { width: 100%; accent-color: var(--acc); margin: 6px 0 10px; }
+  .kb-hint { font-size: 11px; color: var(--text3); margin: -2px 0 8px; }
 
-  /* token */
-  #token-box { position: fixed; inset: 0; z-index: 200; background: var(--bg);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
-  #token-box input { width: 100%; max-width: 340px; padding: 14px; border-radius: 12px;
-    border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 15px; outline: none; }
-  #token-box button { width: 100%; max-width: 340px; background: var(--accent); color: #fff;
-    border-radius: 12px; min-height: 48px; }
+  /* ===== 登录页 ===== */
+  #token-box { position: fixed; inset: 0; z-index: 300; background: var(--bg);
+    display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #token-box::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(46% 40% at 82% -8%, rgba(109,141,255,.2), transparent 70%),
+      radial-gradient(42% 36% at 6% 110%, rgba(160,107,255,.16), transparent 70%); }
+  .login-card { position: relative; width: 100%; max-width: 360px; text-align: center;
+    background: linear-gradient(180deg, rgba(22,28,48,.94), rgba(14,18,32,.94));
+    border: 1px solid var(--border2); border-radius: 26px; padding: 34px 28px 30px; box-shadow: var(--shadow); }
+  .login-logo { width: 62px; height: 62px; margin: 0 auto 18px; border-radius: 18px;
+    background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 10px 30px rgba(109,141,255,.4); }
+  .login-logo svg { width: 30px; height: 30px; }
+  .login-card h1 { font-size: 19px; font-weight: 700; margin-bottom: 5px; letter-spacing: .3px; }
+  .login-card p { font-size: 12.5px; color: var(--text2); margin-bottom: 22px; }
+  .login-card input { width: 100%; padding: 13px 15px; border-radius: 12px; border: 1px solid var(--border2);
+    background: rgba(7,10,18,.7); color: var(--text); font-size: 16px; text-align: center; outline: none;
+    letter-spacing: 1.5px; margin-bottom: 12px; transition: border-color .2s; }
+  .login-card input:focus { border-color: var(--acc); }
+  .login-card button { width: 100%; min-height: 48px; border: none; border-radius: 12px; font-size: 14.5px;
+    font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--acc), var(--acc2));
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: 0 8px 24px rgba(109,141,255,.35); transition: all .18s; }
+  .login-card button:active { transform: scale(.97); }
+  .login-foot { margin-top: 14px; font-size: 11px; color: var(--text3); }
+
   .hidden { display: none !important; }
+
+  /* ===== 桌面适配 ===== */
+  @media (min-width: 768px) {
+    #topbar, #stats, #devices { padding-left: 28px; padding-right: 28px; }
+    #stage { margin: 0 28px; }
+    #bar { padding-left: 28px; padding-right: 28px; }
+    .sheet { bottom: 50%; transform: translate(-50%, 50%); animation: popIn .25s ease-out; }
+    @keyframes popIn { from { opacity: 0; transform: translate(-50%, 50%) scale(.97); } to { opacity: 1; transform: translate(-50%, 50%) scale(1); } }
+  }
 </style>
 </head>
 <body>
-  <div id="topbar">
-    <div id="row1">
-      <span class="logo">电脑监控</span>
-      <span id="dot" class="dot"></span>
-      <span id="status">连接中…</span>
+  <!-- ===== 顶栏 ===== -->
+  <header id="topbar">
+    <div class="tb-row">
+      <div class="brand">
+        <div class="logo-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div>
+          <b>Monitor Console</b>
+          <small>REMOTE CONTROL</small>
+        </div>
+      </div>
+      <div class="tb-right">
+        <div id="conn"><span id="dot" class="dot"></span><span id="status">连接中…</span></div>
+        <button id="btn-logout" class="icon-btn" title="退出登录" aria-label="退出登录">
+          <svg class="ic-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
     </div>
-  </div>
+  </header>
+
+  <!-- ===== 状态条 ===== -->
   <div id="stats">
-    <span class="stat">CPU <b id="st-cpu">--</b></span>
-    <span class="stat">内存 <b id="st-mem">--</b></span>
-    <span class="stat">↑<b id="st-up">--</b></span>
-    <span class="stat">↓<b id="st-down">--</b></span>
-    <span class="stat" id="st-presence" style="color:var(--red)">● 离开</span>
-    <span class="stat">⏱<b id="st-time">--</b></span>
+    <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>CPU <b id="st-cpu">--</b></span>
+    <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>内存 <b id="st-mem">--</b></span>
+    <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg><b id="st-up">--</b></span>
+    <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg><b id="st-down">--</b></span>
+    <span class="stat" id="st-presence">离开</span>
+    <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><b id="st-time">--</b></span>
   </div>
+
+  <!-- ===== 设备选择 ===== -->
   <div id="devices"><div class="chip empty">等待设备…</div></div>
+
+  <!-- ===== 画面 ===== -->
   <div id="stage">
     <img id="screen" alt="实时画面">
-    <button id="touch-toggle" style="position:absolute;top:10px;right:12px;z-index:5;background:rgba(5,8,16,.7);color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;min-height:30px;flex-direction:row;gap:4px;">🖱 触控</button>
-    <div id="fps" class="hidden"></div>
-    <div id="placeholder"><span class="big">▣</span>等待电脑端上线</div>
+    <button id="touch-toggle">触控</button>
+    <div id="fps" class="hidden"><span class="pulse"></span>LIVE</div>
+    <div id="placeholder">
+      <svg class="big" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      等待电脑端上线
+    </div>
   </div>
-  <div id="bar">
-    <button id="btn-screen"><span class="ic">🖥</span>屏幕</button>
-    <button id="btn-cam"><span class="ic">📷</span>摄像头</button>
-    <button id="btn-full"><span class="ic">⛶</span>全屏</button>
-    <button id="btn-ov"><span class="ic">📢</span>字幕</button>
-    <button id="btn-more"><span class="ic">⚙</span>更多</button>
-  </div>
+
+  <!-- ===== 底部工具栏 ===== -->
+  <nav id="bar">
+    <button id="btn-screen" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>屏幕</button>
+    <button id="btn-cam" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></svg>摄像头</button>
+    <button id="btn-full" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>全屏</button>
+    <button id="btn-ov" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><line x1="6" y1="9" x2="13" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/></svg>字幕</button>
+    <button id="btn-more" class="base"><svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>更多</button>
+  </nav>
+
   <div id="toast"></div>
 
-  <!-- 更多控制面板 -->
+  <!-- ===== 更多控制面板 ===== -->
   <div id="more-mask" class="mask hidden"></div>
   <div id="more-panel" class="sheet hidden">
-    <h3>远程控制</h3>
+    <div class="sheet-head"><div class="grip"></div><h3>远程控制</h3><button class="icon-btn" id="more-close" aria-label="关闭"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
 
     <div class="section">
       <div class="section-title">系统</div>
       <div class="row">
-        <button id="act-snap">📷 截图</button>
-        <button id="act-lock" class="warn">🔒 锁屏</button>
-        <button id="act-cancel">取消关机</button>
+        <button id="act-snap" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截图</button>
+        <button id="act-lock" class="base warn"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>锁屏</button>
+        <button id="act-cancel" class="base"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>取消关机</button>
       </div>
       <div class="row">
-        <button id="act-reboot" class="warn">🔄 重启</button>
-        <button id="act-shutdown" class="danger">⏻ 关机</button>
-        <button id="act-blackout">🌑 黑屏</button>
+        <button id="act-reboot" class="base warn"><svg class="ic" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>重启</button>
+        <button id="act-shutdown" class="base danger"><svg class="ic" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>关机</button>
+        <button id="act-blackout" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>黑屏</button>
       </div>
     </div>
 
     <div class="section">
       <div class="section-title">输入</div>
       <input type="text" id="open-target" placeholder="打开网址或路径" />
-      <div class="row"><button id="act-open" class="primary">打开</button></div>
+      <div class="row"><button id="act-open" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>打开</button></div>
       <input type="text" id="clip-text" placeholder="复制文字到电脑剪贴板" />
-      <div class="row"><button id="act-clip" class="primary">发送到剪贴板</button></div>
+      <div class="row"><button id="act-clip" class="base primary"><svg class="ic" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>发送到剪贴板</button></div>
     </div>
 
     <div class="section">
       <div class="section-title">鼠标触控板</div>
-      <div id="touchpad">滑动移动 · 单击=左键 · 双击=右键</div>
+      <div id="touchpad">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+        滑动移动 · 单击=左键 · 双击=右键
+      </div>
     </div>
 
     <div class="section">
       <div class="section-title">语音喊话 (TTS)</div>
       <input type="text" id="tts-text" placeholder="电脑会念这段话">
-      <div class="row"><button id="tts-send" class="primary">🔊 播放</button></div>
+      <div class="row"><button id="tts-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>播放</button></div>
     </div>
 
     <div class="section">
       <div class="section-title">弹窗气泡</div>
       <input type="text" id="popup-text" placeholder="屏幕角落弹个气泡">
-      <div class="row"><button id="popup-send" class="primary">弹出</button></div>
+      <div class="row"><button id="popup-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>弹出</button></div>
     </div>
 
     <div class="section">
       <div class="section-title">闹钟提醒</div>
       <input type="text" id="alarm-text" placeholder="提醒内容，如：该休息了">
       <div class="row">
-        <button id="alarm-1">1分钟</button>
-        <button id="alarm-5">5分钟</button>
-        <button id="alarm-10">10分钟</button>
-        <button id="alarm-30">30分钟</button>
+        <button id="alarm-1" class="base">1分钟</button>
+        <button id="alarm-5" class="base">5分钟</button>
+        <button id="alarm-10" class="base">10分钟</button>
+        <button id="alarm-30" class="base">30分钟</button>
       </div>
     </div>
 
     <div class="section">
       <div class="section-title">涂鸦（在屏幕上画）</div>
       <div class="row">
-        <button id="draw-mode" class="primary">✏️ 开始画</button>
-        <button id="draw-clear">清空</button>
+        <button id="draw-mode" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>开始画</button>
+        <button id="draw-clear" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>清空</button>
       </div>
       <div class="label">颜色</div>
       <div id="draw-colors" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
@@ -221,104 +345,106 @@
     <div class="section">
       <div class="section-title">音量 / 亮度</div>
       <div class="row">
-        <button id="vol-up">🔊 音量+</button>
-        <button id="vol-down">🔉 音量-</button>
-        <button id="vol-mute">🔇 静音</button>
+        <button id="vol-up" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/><line x1="19.5" y1="7.5" x2="19.5" y2="12.5"/></svg>音量+</button>
+        <button id="vol-down" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/></svg>音量-</button>
+        <button id="vol-mute" class="base"><svg class="ic" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/></svg>静音</button>
       </div>
       <div class="label">亮度 <span id="br-val">70</span>%</div>
-      <input type="range" id="br-slider" min="10" max="100" value="70" style="width:100%;margin-bottom:8px;">
+      <input type="range" id="br-slider" min="10" max="100" value="70">
     </div>
 
     <div class="section">
       <div class="section-title">定时截图存证</div>
       <div class="row">
-        <button id="proof-off">关闭</button>
-        <button id="proof-5">5分钟</button>
-        <button id="proof-15">15分钟</button>
-        <button id="proof-30">30分钟</button>
+        <button id="proof-off" class="base">关闭</button>
+        <button id="proof-5" class="base">5分钟</button>
+        <button id="proof-15" class="base">15分钟</button>
+        <button id="proof-30" class="base">30分钟</button>
       </div>
     </div>
 
     <div class="section">
       <div class="section-title">进程管理</div>
-      <div class="row"><button id="btn-proc" class="primary">刷新进程列表</button></div>
-      <div id="proc-list" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;"></div>
+      <div class="row"><button id="btn-proc" class="base primary"><svg class="ic" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg>刷新进程列表</button></div>
+      <div id="proc-list" class="list-box"></div>
     </div>
 
     <div class="section">
       <div class="section-title">快捷键</div>
       <div class="row">
-        <button id="sc-cc">Ctrl+C</button>
-        <button id="sc-cv">Ctrl+V</button>
-        <button id="sc-cx">Ctrl+X</button>
+        <button id="sc-cc" class="base">Ctrl+C</button>
+        <button id="sc-cv" class="base">Ctrl+V</button>
+        <button id="sc-cx" class="base">Ctrl+X</button>
       </div>
       <div class="row">
-        <button id="sc-cz">Ctrl+Z</button>
-        <button id="sc-at">Alt+Tab</button>
-        <button id="sc-wd">Win+D</button>
+        <button id="sc-cz" class="base">Ctrl+Z</button>
+        <button id="sc-at" class="base">Alt+Tab</button>
+        <button id="sc-wd" class="base">Win+D</button>
       </div>
       <div class="row">
-        <button id="sc-enter">Enter</button>
-        <button id="sc-back">退格</button>
-        <button id="sc-esc">Esc</button>
+        <button id="sc-enter" class="base">Enter</button>
+        <button id="sc-back" class="base">退格</button>
+        <button id="sc-esc" class="base">Esc</button>
       </div>
     </div>
 
     <div class="section">
       <div class="section-title">远程键盘（打字到电脑）</div>
       <input type="text" id="kb-input" placeholder="在这里打字，实时发送到电脑" autocomplete="off">
+      <div class="kb-hint">回车发送 · 退格删除 · 支持特殊键</div>
     </div>
 
     <div class="section">
       <div class="section-title">演示 / PPT</div>
       <div class="row">
-        <button id="key-left" class="primary">◀ 上一页</button>
-        <button id="key-right" class="primary">下一页 ▶</button>
+        <button id="key-left" class="base primary"><svg class="ic" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>上一页</button>
+        <button id="key-right" class="base primary">下一页<svg class="ic" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
       </div>
       <div class="row">
-        <button id="key-f5">开始放映</button>
-        <button id="key-esc">退出</button>
+        <button id="key-f5" class="base">开始放映</button>
+        <button id="key-esc" class="base">退出</button>
       </div>
     </div>
 
     <div class="section">
       <div class="section-title">文件管理</div>
       <input type="text" id="file-path" placeholder="路径，如 C:\Users\35722\Desktop" />
-      <div class="row"><button id="act-list">浏览目录</button></div>
-      <div id="file-list"></div>
+      <div class="row"><button id="act-list" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>浏览目录</button></div>
+      <div id="file-list" class="list-box"></div>
     </div>
 
     <div class="section">
       <div class="section-title">截图存证</div>
-      <div class="row"><button id="btn-proof" class="primary">📸 截一张存到服务器</button></div>
+      <div class="row"><button id="btn-proof" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截一张存到服务器</button></div>
       <div id="proof-grid"></div>
     </div>
 
     <div class="section">
       <div class="section-title">其他</div>
       <input type="file" id="wp-file" accept="image/*" style="font-size:12px;color:var(--text2);margin-bottom:8px;">
-      <div class="row"><button id="act-chat" class="primary">💬 打开聊天</button></div>
-      <div class="row"><button id="more-close">关闭</button></div>
+      <div class="row">
+        <button id="act-chat" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>打开聊天</button>
+        <button id="more-close2" class="base">关闭</button>
+      </div>
     </div>
   </div>
 
-  <!-- 聊天面板 -->
+  <!-- ===== 聊天面板 ===== -->
   <div id="chat-mask" class="mask hidden"></div>
   <div id="chat-panel" class="sheet hidden">
-    <h3>与电脑前的人聊天</h3>
-    <div id="chat-log" style="background:var(--bg);border:1px solid var(--border);border-radius:14px;
+    <div class="sheet-head"><div class="grip"></div><h3>与电脑前的人聊天</h3><button class="icon-btn" id="chat-close" aria-label="关闭"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div id="chat-log" style="background:rgba(7,10,18,.7);border:1px solid var(--border);border-radius:14px;
       height:240px;overflow-y:auto;padding:12px;margin-bottom:10px;font-size:14px;line-height:1.7;"></div>
     <input type="text" id="chat-input" placeholder="输入消息，回车发送" />
     <div class="row" style="margin-top:8px;">
-      <button id="chat-close">关闭</button>
-      <button id="chat-send" class="primary">发送</button>
+      <button id="chat-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>发送</button>
     </div>
   </div>
 
-  <!-- 字幕面板 -->
+  <!-- ===== 字幕面板 ===== -->
   <div id="ov-mask" class="mask hidden"></div>
   <div id="ov-panel" class="sheet hidden">
-    <h3>发送屏幕字幕</h3>
+    <div class="sheet-head"><div class="grip"></div><h3>发送屏幕字幕</h3><button class="icon-btn" id="ov-cancel" aria-label="关闭"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
     <input type="text" id="ov-text" placeholder="要在电脑屏幕上滚动的文字" maxlength="50" />
     <div class="section">
       <div class="section-title">背景颜色</div>
@@ -334,23 +460,29 @@
     </div>
     <div class="row" style="margin-top:10px;">
       <label style="flex:1;font-size:12px;color:var(--text2);">速度 <span id="ov-speed-v">中</span>
-        <input type="range" id="ov-speed" min="2" max="20" value="8" style="width:100%;">
+        <input type="range" id="ov-speed" min="2" max="20" value="8">
       </label>
       <label style="flex:1;font-size:12px;color:var(--text2);">时长 <span id="ov-dur-v">10</span> 秒
-        <input type="range" id="ov-duration" min="3" max="60" value="10" style="width:100%;">
+        <input type="range" id="ov-duration" min="3" max="60" value="10">
       </label>
     </div>
     <div class="row" style="margin-top:10px;">
-      <button id="ov-cancel">取消</button>
-      <button id="ov-send" class="primary">发送</button>
+      <button id="ov-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>发送</button>
     </div>
   </div>
 
-  <!-- token -->
+  <!-- ===== 登录 ===== -->
   <div id="token-box" class="hidden">
-    <div style="font-size:18px;font-weight:700;">电脑监控</div>
-    <input id="token-input" type="password" placeholder="输入 Token" autocomplete="off">
-    <button id="btn-token">进入</button>
+    <div class="login-card">
+      <div class="login-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <h1>Monitor Console</h1>
+      <p>输入访问令牌，进入远程控制台</p>
+      <input id="token-input" type="password" placeholder="访问令牌" autocomplete="off">
+      <button id="btn-token">进入控制台<svg class="ic-sm" viewBox="0 0 24 24" style="width:17px;height:17px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+      <div class="login-foot">Token 保存在本机，退出后需重新输入</div>
+    </div>
   </div>
 
 <script>
@@ -359,6 +491,7 @@
   var img = $('screen'), ph = $('placeholder'), fpsEl = $('fps');
   var dot = $('dot'), status = $('status'), toastEl = $('toast'), devBar = $('devices');
   var ws = null, token = localStorage.getItem('mt_token') || '';
+  var loggedOut = false;
   var blobUrl = null, selected = null, fpsWindow = [], toastTimer = null, lastHeader = null;
   var selBg = '#ff3b30', selFg = '#ffffff';
 
@@ -385,13 +518,15 @@
       var c = document.createElement('div');
       c.className = 'chip' + (d.name === selected ? ' active' : '');
       var os = {windows:'Win', darwin:'Mac', linux:'Linux'}[d.os] || d.os;
-      c.textContent = d.name + ' · ' + os;
+      c.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg><span></span>';
+      c.lastChild.textContent = d.name + ' · ' + os;
       c.onclick = function () { selected = d.name; send({type:'select', name: selected}); renderDevices(list); };
       devBar.appendChild(c);
     });
   }
 
   function connect() {
+    if (loggedOut) return;
     if (!token) { $('token-box').classList.remove('hidden'); return; }
     setStatus('连接中…', '');
     var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -414,11 +549,12 @@
           var s = m.uptime, h = Math.floor(s/3600), m2 = Math.floor(s%3600/60);
           $('st-time').textContent = (h>0?h+'h ':'') + m2 + 'm';
           var p = $('st-presence');
-          p.textContent = m.active ? '● 在岗' : '● 离开';
-          p.style.color = m.active ? 'var(--green)' : 'var(--red)';
+          p.innerHTML = '<b style="color:' + (m.active ? 'var(--green)' : 'var(--red)') + '">●</b> ' + (m.active ? '在岗' : '离开');
+          p.className = 'stat live' + (m.active ? '' : '');
+          p.style.color = m.active ? '' : 'var(--text2)';
         }
         else if (m.type === 'motion') toast('⚠ ' + m.text);
-        else if (m.type === 'chat') { addChatMsg('电脑', m.text); toast('💬 电脑: ' + m.text); }
+        else if (m.type === 'chat') { addChatMsg('电脑', m.text); toast('电脑: ' + m.text); }
         else if (m.type === 'dir_list') renderDir(m);
         else if (m.type === 'file_data') downloadFile(m);
         else if (m.type === 'process_list') renderProcs(m);
@@ -431,31 +567,55 @@
       fpsEl.classList.remove('hidden');
       var now = Date.now(); fpsWindow.push(now);
       while (fpsWindow.length && now - fpsWindow[0] > 2000) fpsWindow.shift();
-      fpsEl.textContent = '📡 ' + (fpsWindow.length/2).toFixed(1) + ' fps · ' + lastHeader.source;
+      fpsEl.lastChild.nodeValue = ' LIVE ' + (fpsWindow.length/2).toFixed(1) + ' fps · ' + lastHeader.source;
     };
   }
+
+  function logout() {
+    loggedOut = true;
+    try { ws && ws.close(); } catch(e){}
+    localStorage.removeItem('mt_token');
+    token = '';
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+    $('token-box').classList.remove('hidden');
+    setStatus('已退出', '');
+    toast('已退出登录');
+  }
+  $('btn-logout').onclick = function () {
+    if (confirm('退出登录并重新输入 Token？')) logout();
+  };
 
   $('btn-token').onclick = function () {
     token = $('token-input').value.trim();
     if (!token) return;
     localStorage.setItem('mt_token', token);
-    $('token-box').classList.add('hidden'); connect();
+    $('token-box').classList.add('hidden');
+    loggedOut = false;
+    connect();
   };
   $('token-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btn-token').click(); });
 
   $('btn-screen').onclick = function () { send({type:'set_source', source:'screen'}); };
   $('btn-cam').onclick = function () { send({type:'set_source', source:'camera'}); };
+  $('btn-full').onclick = function () {
+    var el = document.documentElement;
+    if (el.requestFullscreen) { el.requestFullscreen(); }
+    else if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); }
+    else if (el.msRequestFullscreen) { el.msRequestFullscreen(); }
+    else { toast('当前浏览器不支持全屏'); }
+  };
   $('btn-more').onclick = function () {
     $('more-mask').classList.remove('hidden'); $('more-panel').classList.remove('hidden');
   };
   function closeMore() { $('more-mask').classList.add('hidden'); $('more-panel').classList.add('hidden'); }
   $('more-mask').onclick = closeMore;
   $('more-close').onclick = closeMore;
+  $('more-close2').onclick = closeMore;
 
   function addChatMsg(who, text) {
     var log = $('chat-log');
     var div = document.createElement('div');
-    div.innerHTML = (who === '我' ? '<b style="color:#7c9eff">我</b>' : '<b style="color:#3fb950">电脑</b>') +
+    div.innerHTML = (who === '我' ? '<b style="color:#7c9eff">我</b>' : '<b style="color:#3ddc84">电脑</b>') +
       '：' + text;
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
@@ -465,8 +625,8 @@
     $('chat-mask').classList.remove('hidden'); $('chat-panel').classList.remove('hidden');
   };
   function closeChat() { $('chat-mask').classList.add('hidden'); $('chat-panel').classList.add('hidden'); }
-  $('chat-close').onclick = closeChat;
   $('chat-mask').onclick = closeChat;
+  $('chat-close').onclick = closeChat;
   $('chat-send').onclick = function () {
     var t = $('chat-input').value.trim();
     if (!t) return;
@@ -544,8 +704,7 @@
   $('touch-toggle').onclick = function(e) {
     e.stopPropagation();
     touchOn = !touchOn;
-    this.style.background = touchOn ? 'var(--accent)' : 'rgba(5,8,16,.7)';
-    this.style.color = touchOn ? '#fff' : 'var(--text2)';
+    this.classList.toggle('on', touchOn);
     toast(touchOn ? '触控已开启' : '触控已关闭');
   };
 
@@ -620,13 +779,16 @@
   var dcEl = $('draw-colors');
   DRAW_COLORS.forEach(function(c) {
     var d = document.createElement('div');
-    d.style.cssText = 'width:28px;height:28px;border-radius:6px;cursor:pointer;border:2px solid ' + (c===drawColor?'#fff':'transparent') + ';background:' + c;
-    d.onclick = function() { drawColor = c; dcEl.querySelectorAll('div').forEach(function(x){x.style.borderColor='transparent';}); d.style.borderColor='#fff'; };
+    d.className = 'sw' + (c === drawColor ? ' active' : '');
+    d.style.background = c;
+    d.onclick = function() { drawColor = c; dcEl.querySelectorAll('.sw').forEach(function(x){x.classList.remove('active');}); d.classList.add('active'); };
     dcEl.appendChild(d);
   });
   $('draw-mode').onclick = function() {
     drawOn = !drawOn;
-    this.style.background = drawOn ? '#ff3b30' : 'var(--accent)';
+    this.classList.toggle('danger', drawOn);
+    this.style.background = drawOn ? 'rgba(255,92,106,.18)' : '';
+    this.style.color = drawOn ? 'var(--red)' : '';
     toast(drawOn ? '涂鸦模式：在画面上画' : '涂鸦已关闭');
   };
   $('draw-clear').onclick = function() { send({type:'draw_clear'}); };
@@ -653,6 +815,7 @@
     send({type:'process_list'});
     toast('正在获取...');
   };
+
   // 快捷键
   function sendKey(key, mods) { send({type:'key', key: key, modifiers: mods || []}); }
   $('sc-cc').onclick = function () { sendKey('c', ['ctrl']); };
@@ -709,8 +872,7 @@
     if (!m.processes || !m.processes.length) { box.innerHTML = '<div style="color:var(--text2);padding:10px;">无进程</div>'; return; }
     m.processes.forEach(function(p) {
       var d = document.createElement('div');
-      d.style.cssText = 'padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center;';
-      d.innerHTML = '<span>' + p.name + '</span><span style="color:var(--text2);">CPU ' + p.cpu + '% · MEM ' + p.mem + '%</span>';
+      d.innerHTML = '<span>' + p.name + '</span><span style="color:var(--text2);font-variant-numeric:tabular-nums;">CPU ' + p.cpu + '% · MEM ' + p.mem + '%</span>';
       d.onclick = function() {
         if (confirm('结束进程 ' + p.name + ' (PID ' + p.pid + ')?')) {
           send({type:'kill_process', pid: p.pid});
@@ -725,7 +887,7 @@
     var box = $('file-list'); box.innerHTML = '';
     if (m.error) { box.innerHTML = '<div style="color:var(--red);">' + m.error + '</div>'; return; }
     var up = document.createElement('div');
-    up.innerHTML = '<span>⬆ 上级目录</span><span></span>';
+    up.innerHTML = '<span class="file-ic"><svg class="ic-sm" viewBox="0 0 24 24" style="width:14px;height:14px;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg> 上级目录</span><span></span>';
     up.onclick = function () {
       var parts = m.cwd.replace(/\\/g,'/').split('/'); parts.pop();
       $('file-path').value = parts.join('/').replace(/\//, m.cwd.match(/^[A-Za-z]:/) ? '$&' : '') || '/';
@@ -734,7 +896,10 @@
     box.appendChild(up);
     m.entries.forEach(function (e) {
       var d = document.createElement('div');
-      d.innerHTML = '<span>' + (e.is_dir?'📁':'📄') + ' ' + e.name + '</span><span style="color:var(--text2);">' +
+      d.innerHTML = '<span class="file-ic">' + (e.is_dir
+        ? '<svg class="ic-sm" viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+        : '<svg class="ic-sm" viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>')
+        + ' ' + e.name + '</span><span style="color:var(--text2);font-variant-numeric:tabular-nums;">' +
         (e.is_dir?'':(e.size/1024).toFixed(1)+'KB') + '</span>';
       d.onclick = function () {
         if (e.is_dir) {
@@ -766,7 +931,8 @@
     var el = $(elId); el.innerHTML = '';
     colors.forEach(function (c) {
       var d = document.createElement('div');
-      d.style.cssText = 'width:30px;height:30px;border-radius:8px;cursor:pointer;border:2px solid ' + (c===cur?'#fff':'transparent') + ';background:' + c;
+      d.className = 'sw' + (c === cur ? ' active' : '');
+      d.style.background = c;
       d.onclick = function () { cb(c); swatches(elId, colors, c, cb); };
       el.appendChild(d);
     });
@@ -778,8 +944,8 @@
     POS_OPTS.forEach(function (p) {
       var d = document.createElement('div');
       d.textContent = p[1];
-      d.style.cssText = 'flex:1;text-align:center;padding:8px;border-radius:8px;cursor:pointer;border:1px solid ' +
-        (p[0]===selPos ? 'var(--accent)' : 'var(--border)') + ';background:' + (p[0]===selPos ? 'var(--accent)' : 'var(--surface2)') + ';font-size:13px;';
+      d.style.cssText = 'flex:1;text-align:center;padding:9px;border-radius:10px;cursor:pointer;border:1px solid ' +
+        (p[0]===selPos ? 'rgba(109,141,255,.6)' : 'var(--border)') + ';background:' + (p[0]===selPos ? 'rgba(109,141,255,.16)' : 'var(--glass)') + ';font-size:13px;transition:all .15s;';
       d.onclick = function () { selPos = p[0]; renderPos(); };
       el.appendChild(d);
     });
