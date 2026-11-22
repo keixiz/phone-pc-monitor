@@ -1,0 +1,61 @@
+name: 打包 Windows exe
+
+# 在 GitHub 的 Windows 机器上自动打包 phone-pc-monitor.exe，
+# 本地不需要装 Python。推 tag（如 v3.0）会自动发到 Releases，手机/电脑直接下载。
+# 也可以在仓库页面 Actions → 「打包 Windows exe」→ Run workflow 手动打。
+
+on:
+  workflow_dispatch:          # 手动触发
+  push:                       # 推送代码时自动打
+    branches: [main]
+    tags: ["v*"]
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装打包依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "setuptools<70" pyinstaller
+          python -m pip install -r lan/requirements.txt
+
+      - name: PyInstaller 打包（单文件、无窗口）
+        working-directory: lan
+        shell: pwsh
+        run: python -m PyInstaller --clean --onefile --noconsole --name phone-pc-monitor --add-data "static;static" --hidden-import tkinter --collect-submodules pynput --collect-submodules mss monitor-lan.py
+
+      - name: 组装发布目录
+        working-directory: lan
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist\phone-pc-monitor" | Out-Null
+          Copy-Item "dist\phone-pc-monitor.exe" "dist\phone-pc-monitor\" -Force
+          Copy-Item "config.example.json","README.md","启动热点并运行.bat","开启热点.ps1","关闭热点.ps1","开放防火墙.bat" "dist\phone-pc-monitor\" -Force
+          Compress-Archive -Path "dist\phone-pc-monitor\*" -DestinationPath "dist\phone-pc-monitor-win.zip" -Force
+
+      - name: 上传产物（Actions 页面可下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-pc-monitor-windows
+          path: lan/dist/phone-pc-monitor-win.zip
+
+      - name: 发到 Releases（打 tag / 发布 Release 时）
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: lan/dist/phone-pc-monitor-win.zip
+          generate_release_notes: true

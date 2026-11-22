@@ -4,11 +4,145 @@
 
 > 本项目在开发过程中使用了 AI 编程助手辅助编写，由作者主导架构设计与调试。
 
+## 两种用法
+
+| 模式 | 适用场景 | 需要什么 |
+|---|---|---|
+| **局域网版（推荐）** | 家里 / 办公室，手机和电脑挨着或同一个 Wi-Fi，想低延迟、不依赖公网 | 一台受控电脑（Windows）+ 手机，**不需要**公网服务器 |
+| 远程版（原方案） | 人在外面，通过公网访问家里的电脑 | 一台有公网 IP 的 Linux 服务器做中继 |
+
+> 2026-11 更新：新增 **局域网一体版**（`lan/`），把原来的「Linux 服务器 + 电脑 Agent」合成一个程序，直接在受控电脑上运行。手机连上同一个热点 / 局域网即可控制，画面不再绕公网，延迟更低、零月租，断网也能用。
+
+---
+
+## 局域网版 · 快速开始
+
+```
+局域网版目录：
+lan/
+├── monitor-lan.py          # 一体程序：服务器 + 本机采集/控制
+├── static/index.html       # 手机端页面（不用装 App）
+├── config.example.json     # 配置样例（首次运行自动生成 config.json）
+├── README.md               # 局域网版单独使用说明
+├── requirements.txt
+├── 启动.bat                # 双击启动（自动装依赖）
+├── 启动热点并运行.bat      # 电脑开移动热点 + 启动程序
+├── 开启热点.ps1 / 关闭热点.ps1
+├── 开放防火墙.bat          # 首次运行：放行端口（管理员）
+├── 后台启动.vbs            # 无窗口静默运行
+├── 开机自启.bat / 开机自启-取消.bat
+└── 打包exe.bat             # 打包成单文件 exe
+```
+
+### 1. 手机和电脑放到同一个网络
+
+选一种：
+
+**方式 A：手机开热点，电脑连手机（最简单，两边都不用有外网）**
+1. 手机打开「个人热点」（可设密码）。
+2. 电脑连上这个热点。
+3. 启动程序后，窗口会打印手机访问地址，形如 `http://192.168.43.12:8000/?token=xxxx`。
+4. 手机浏览器打开该地址即可。
+
+**方式 B：电脑开移动热点，手机连电脑**（电脑本身要有网络，Wi-Fi 或网线都行）
+1. Windows：设置 → 网络和 Internet → 移动热点 → 打开。
+2. 手机连电脑发出的热点。
+3. 启动程序，手机打开 `http://192.168.137.1:8000/?token=xxxx`。
+   也可以用 `开启热点.ps1`（或 `启动热点并运行.bat`）自动开热点。
+
+**方式 C：手机和电脑本来就同一个路由器 / Wi-Fi** —— 直接用，跳过热点。
+
+程序启动后会写出 `访问地址.txt`，里面列出本机所有可用地址，手机打开任意一个都行（地址里已带 token，自动登录）。
+
+### 2. 电脑上启动
+
+首次：
+```bat
+cd lan
+pip install -r requirements.txt
+python monitor-lan.py
+```
+或直接双击 `启动.bat`（会检查并安装依赖）。
+
+首次运行还要放行防火墙（管理员权限，只做一次）：
+> 右键 `开放防火墙.bat` → 以管理员身份运行
+
+运行时窗口会显示：
+```
+服务已启动: 监听 0.0.0.0:8000
+手机访问地址（手机与电脑在同一热点/局域网）：
+  http://192.168.137.1:8000/?token=xxxxxxxx
+```
+
+### 3. 手机打开
+
+浏览器打开上面的地址，自动进入控制台；也可以「添加到主屏幕」，之后像 App 一样点开。
+
+`config.json` 首次运行自动生成，里面有随机 token；想改端口 / 设备名 / 帧率直接编辑它（改完重启程序）。
+
+### 4. 可选
+
+- **摄像头画面**：`pip install opencv-python numpy`，页面点「摄像头」即可切换。
+- **打包成 exe**（目标电脑不用装 Python）：运行 `打包exe.bat`，输出 `dist\phone-pc-monitor.exe`。把 exe 放到任意文件夹，双击运行，首次会在旁边生成 `config.json` 和 `访问地址.txt`。
+- **后台静默**：`后台启动.vbs`（无黑窗口）；`开机自启.bat` 把启动项加进用户启动目录。
+- **临时换端口**：`python monitor-lan.py --port 8080`。
+- **无屏幕环境自测**：`python monitor-lan.py --demo`，用合成画面验证页面和推流。
+
+### 没有 Python / 想直接拿 exe 跑
+
+**目标电脑用 exe 不需要装 Python**（exe 自带 Python 运行时）；需要 Python 的只是「打 exe 的那台机器」。
+
+> 详细图文步骤（含 Fork、手动触发、下载、首次运行）：[docs/build-windows-exe.md](docs/build-windows-exe.md)
+
+三条路，任选：
+
+1. **GitHub Actions 自动打（推荐，本地零环境）**
+   - 把仓库推到 GitHub（或 fork 后推），`.github/workflows/build-windows-exe.yml` 会在 GitHub 的 Windows 机器上自动打包
+   - 仓库页面 → Actions → 「打包 Windows exe」→ Run workflow
+   - 跑完在该次运行页面底部下载 `phone-pc-monitor-windows`，解压得到 `phone-pc-monitor.exe`
+   - 打 tag（`git tag v3.0 && git push --tags`）会自动发布到 Releases，手机/电脑直接下载
+2. **任意装过 Python 的 Windows**：把 `lan/` 拷过去，双击 `打包exe.bat`，输出 `dist\phone-pc-monitor.exe`
+3. **不打包直接跑**：目标电脑装一次 Python（安装时勾选 Add to PATH），双击 `启动.bat` 装依赖；以后用 `后台启动.vbs` 静默运行
+
+**exe 本身也是静默的**：打包参数 `--onefile --noconsole`，双击不弹黑窗口；日志写到 exe 旁的 `monitor-lan.log`，访问地址写在 `访问地址.txt`。开机自启：Win+R 输入 `shell:startup`，把 exe 的快捷方式丢进去即可。
+
+小提示：onefile exe 首次启动会先解压到临时目录，慢一两秒属正常；个别杀毒软件会误报，加白名单即可。
+
+### 常见问题
+
+| 现象 | 检查 |
+|---|---|
+| 手机打不开页面 | 电脑防火墙是否放行（`开放防火墙.bat`）；手机和电脑是否真的在同一热点/局域网；看 `访问地址.txt` 里的地址是不是当前网段的 |
+| 连上了 Wi-Fi 但访问不到电脑 | 路由器若开了「AP 隔离 / 访客网络」会挡住同一 Wi-Fi 内的互访，改用电脑或手机热点，或在路由器里关掉 AP 隔离 |
+| 一直显示「断开重连」/ 弹出令牌框 | 电脑程序是否在运行；token 是否和 `config.json` 一致（重新打开带 token 的地址最省事） |
+| 只剩画面、操作没反应 | 受控电脑上 `pynput` 是否装好（`pip install pynput`）；Windows 下某些全屏游戏 / 管理员窗口需要以管理员身份运行本程序 |
+| 后台静默运行出问题 | 看同目录 `monitor-lan.log`（无窗口模式把日志写这里） |
+| 画面黑屏 / 没有推流 | 先 `--demo` 验证链路；正常模式需要 `mss`（`pip install mss`）；Windows 锁屏状态下截屏会是黑屏 |
+| 电脑开不了移动热点 | Windows 移动热点需要电脑本身有可用网络；没有外网时改用「方式 A：手机开热点，电脑连手机」 |
+| 端口被占用 | 改 `config.json` 的 `port`，或用 `--port 8080`，记得重新放行防火墙 |
+| 摄像头打不开 | 装 `opencv-python numpy`；被其他程序占用时先关掉（微信/QQ/相机等） |
+
+### 已知限制
+
+- 只采集 **主显示器**（多屏时外接屏看不到、点不到）。
+- 存证截图按「今天 / 昨天」查看；更早的历史可去电脑上 `proof\设备名\日期\` 目录里找。
+- 摄像头画面需要额外装 `opencv-python numpy`；其余功能不受影响。
+- 电脑「移动热点」要求电脑本身有可用网络；没有外网时用手机热点反向连。
+
+### 安全提醒
+
+- 局域网版默认只监听内网，**不要**把端口直接映射到公网。
+- token 是访问密码，`访问地址.txt` 和程序窗口里有明文；不要把带 token 的地址截图发到群里。
+- 热点 / Wi-Fi 请设置强密码（WPA2 以上），局域网内别人拿到 token 也能控制。
+- 改 token：编辑 `config.json` 的 `token` 后重启程序，手机重新打开带新 token 的地址。
+
+---
+
 ## 功能一览
 
 **实时画面**
 - 屏幕 / 摄像头切换，JPEG 帧通过 WebSocket 低延迟推流
-- 多设备列表，一台服务器可同时挂多台电脑
+- 多设备列表（局域网版默认一台；远程版可挂多台）
 - 实时帧率、CPU / 内存 / 网络速率显示
 - 在岗 / 离开状态检测
 - 静默节能：无人观看时电脑端完全静默（零截屏、零开销），有人观看立即恢复
@@ -34,9 +168,22 @@
 - TTS 语音喊话（电脑朗读文字）
 - 闹钟提醒（1 / 5 / 10 / 30 分钟）
 - 屏幕涂鸦（在桌面上手绘、多种颜色、清空）
-- 定时截图存证（5 / 15 / 30 分钟自动截图到服务器）
+- 定时截图存证（5 / 15 / 30 分钟自动截图到电脑）
 
 ## 架构
+
+**局域网版（默认）**
+
+```
+手机浏览器 (H5)
+     │  http / ws（同一热点或局域网）
+     ▼
+受控电脑：monitor-lan.py
+     ├─ aiohttp 服务器：页面 + WebSocket + 存证截图
+     └─ 本机采集/控制引擎：mss 截屏 / OpenCV 摄像头 / pynput 键鼠
+```
+
+**远程版（保留，可选）**
 
 ```
 手机浏览器 (H5)
@@ -48,48 +195,47 @@ Linux 服务器 (aiohttp WebSocket 中继 + 静态文件 + 截图存储)
 Windows 电脑 Agent (mss 截屏 / OpenCV 摄像头 / pynput 键鼠)
 ```
 
-三端解耦：服务器只做消息中继，不处理画面内容；电脑端负责采集和执行；手机端纯前端。
-
-## 快速开始
-
-### 1. 服务端（Linux）
-
-```bash
-cd server
-pip3 install -r requirements.txt
-cp config.example.json config.json
-# 编辑 config.json，设置一个强随机 token
-python3 monitor-server.py
-```
-
-通过 Nginx 反代并启用 WebSocket 升级即可对外提供服务，建议配 HTTPS。
-
-### 2. 电脑端（Windows）
-
-```bash
-cd agent
-pip install -r requirements.txt
-pip install opencv-python numpy
-cp config.example.json config.json
-# 编辑 config.json，填入服务器地址和 token
-python monitor-agent.py
-```
-
-也可用 PyInstaller 打包成 exe 静默运行（见 `build-exe.bat` 和 `start-hidden.vbs`）。
-
-### 3. 手机端
-
-浏览器打开服务器域名，输入 token 即可。支持"添加到主屏幕"。
-
 ## 技术栈
 
 | 端 | 技术 |
 |---|---|
-| 服务端 | Python 3.8+ / aiohttp / WebSocket |
-| 电脑端 | Python 3.8+ / mss / OpenCV / pynput / psutil / pywin32 |
-| 手机端 | 原生 HTML / CSS / JavaScript（无框架） |
+| 服务端 / 受控端（局域网版一体） | Python 3.8+ / aiohttp / mss / OpenCV / pynput / psutil / tkinter |
+| 手机端 | 原生 HTML / CSS / JavaScript（无框架，无外部 CDN） |
+| 远程版服务器 | Python 3.8+ / aiohttp / WebSocket |
+
+## 远程版（原方案）
+
+目录 `server/`（Linux 中继）和 `agent/`（Windows 采集端）保持原样，仍可用：
+
+```bash
+# 服务器
+cd server && pip3 install -r requirements.txt
+cp config.example.json config.json   # 填入强随机 token
+python3 monitor-server.py
+
+# 电脑端
+cd agent && pip install -r requirements.txt
+pip install opencv-python numpy
+cp config.example.json config.json   # 填服务器 wss://域名/ws 和 token
+python monitor-agent.py
+```
+
+注意：远程版需要公网服务器 + 域名 + HTTPS/WSS；局域网版不需要。
 
 ## 更新记录
+
+**v3.0 · 局域网一体版（2026-11）**
+- 新增 `lan/`：服务器与受控端合一，单个 `monitor-lan.py` 即可运行，单文件 exe 可打包
+- 手机连电脑热点 / 同一局域网直接访问，不依赖公网；页面与依赖全部本地，断网可用
+- 首次运行自动生成随机 token 和 `config.json`，自动写出 `访问地址.txt`，手机用 `?token=` 地址自动登录
+- 网络变化（开/关热点、换网）自动刷新访问地址并打印
+- 静默节能保留；手机连上时状态栏立即出数据，不用等 60 秒
+- 修复：高分屏缩放下手机点击坐标偏移（DPI 感知 + 用真实像素尺寸）
+- 修复：存证截图按本地日期查询（原来的 UTC 日期在东八区凌晨会查错天）；存证接口增加 token 校验
+- 修复：网络速率/CPU 读不到时不再影响状态上报（状态栏显示 --）
+- 加固：单条控制指令出错不会搞挂控制通道；后台任务崩溃自动重启；手机网络慢时丢旧帧防内存爆涨
+- 加固：黑屏可再次点击解除，电脑按 Esc 或 30 分钟后自动解除；无窗口运行日志写到 `monitor-lan.log`
+- 附带 Windows 启动 / 热点 / 防火墙 / 自启 / 打包脚本
 
 **v2.2（2026-10）**
 - 静默节能：无人观看时电脑端彻底静默——停止截屏推流（事件驱动，零 CPU 占用，不再是每秒轮询）、系统状态上报降频到 60 秒一次；有人观看时毫秒级恢复
@@ -103,9 +249,8 @@ python monitor-agent.py
 
 ## 安全提醒
 
-- 请务必使用强随机 token，并通过 HTTPS / WSS 部署
+- 请务必使用强随机 token；局域网版不要直接暴露到公网
 - 本工具用于监控你自己或已获授权的设备，滥用责任自负
-- 开源版本中的服务器地址和 token 均为占位符，使用前请自行修改
 
 ## License
 

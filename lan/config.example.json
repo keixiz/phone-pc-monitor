@@ -1,0 +1,18 @@
+{
+  "host": "0.0.0.0",
+  "port": 8000,
+  "token": "",
+  "name": "",
+  "source": "screen",
+  "fps": 3,
+  "jpeg_quality": 70,
+  "camera_index": 0,
+  "motion_threshold": 8.0,
+  "demo": false,
+  "notify": {
+    "channel": "off",
+    "topic": "",
+    "server": "https://ntfy.sh",
+    "sendkey": ""
+  }
+}

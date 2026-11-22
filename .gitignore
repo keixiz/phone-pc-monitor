@@ -7,3 +7,12 @@ config.json
 proof/
 *.log
 .DS_Store
+
+# 局域网版运行产物
+访问地址.txt
+lan/config.json
+lan/config.json.tmp
+
+# 局域网版运行日志（后台静默模式）
+lan/monitor-lan.log
+lan/monitor-lan.log.1

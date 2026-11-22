@@ -1,0 +1,10 @@
+# 局域网版（电脑端一体程序）依赖
+aiohttp
+mss
+Pillow
+psutil
+pynput
+
+# 摄像头画面需要（不装则只能用屏幕，其它功能不受影响）
+# opencv-python
+# numpy
