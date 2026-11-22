@@ -84,7 +84,8 @@ python monitor-lan.py
 
 - **摄像头画面**：`pip install opencv-python numpy`，页面点「摄像头」即可切换。
 - **打包成 exe**（目标电脑不用装 Python）：运行 `打包exe.bat`，输出 `dist\phone-pc-monitor.exe`。把 exe 放到任意文件夹，双击运行，首次会在旁边生成 `config.json` 和 `访问地址.txt`。
-- **后台静默**：`后台启动.vbs`（无黑窗口）；`开机自启.bat` 把启动项加进用户启动目录。
+- **后台静默**：`后台启动.vbs`（无黑窗口）；`开机自启.bat` 把启动项加进用户启动目录（exe 版直接指向 exe，静默自启）。
+- **预设端口/token**：双击 `预设配置.bat` 生成 `config.json`（默认端口 8000，自动生成强 token 并显示访问地址）；也可以直接编辑 `config.example.json` 或 exe 旁的 `config.default.json`，首次运行会自动套用。
 - **临时换端口**：`python monitor-lan.py --port 8080`。
 - **无屏幕环境自测**：`python monitor-lan.py --demo`，用合成画面验证页面和推流。
 

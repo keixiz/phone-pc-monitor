@@ -44,7 +44,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "dist\phone-pc-monitor" | Out-Null
           Copy-Item "dist\phone-pc-monitor.exe" "dist\phone-pc-monitor\" -Force
-          Copy-Item "config.example.json","README.md","启动热点并运行.bat","开启热点.ps1","关闭热点.ps1","开放防火墙.bat" "dist\phone-pc-monitor\" -Force
+          Copy-Item "config.example.json","README.md","预设配置.bat","开机自启.bat","开机自启-取消.bat","后台启动.vbs","启动热点并运行.bat","开启热点.ps1","关闭热点.ps1","开放防火墙.bat" "dist\phone-pc-monitor\" -Force
           Compress-Archive -Path "dist\phone-pc-monitor\*" -DestinationPath "dist\phone-pc-monitor-win.zip" -Force
 
       - name: 上传产物（Actions 页面可下载）

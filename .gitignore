@@ -16,3 +16,6 @@ lan/config.json.tmp
 # 局域网版运行日志（后台静默模式）
 lan/monitor-lan.log
 lan/monitor-lan.log.1
+
+# 本机预设配置（含 token，不要提交）
+lan/config.default.json

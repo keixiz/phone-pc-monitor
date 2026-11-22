@@ -137,12 +137,18 @@ def load_config():
     """读取/创建 config.json；token 缺失时自动生成并落盘。"""
     cfg = json.loads(json.dumps(DEFAULT_CONFIG))  # 深拷贝
     created = not os.path.exists(CONFIG_PATH)
-    if created and os.path.exists(EXAMPLE_CONFIG):
-        try:
-            cfg.update(_load_json_file(EXAMPLE_CONFIG))
-            log.info("未找到 config.json，已按 config.example.json 创建")
-        except Exception as e:
-            log.error("读取 config.example.json 失败: %s", e)
+    if created:
+        # 首次运行：优先用 exe 旁的 config.default.json（可预设端口/token），
+        # 没有再用 config.example.json / 内置默认值
+        preset = os.path.join(BASE_DIR, "config.default.json")
+        src = preset if os.path.exists(preset) else (
+            EXAMPLE_CONFIG if os.path.exists(EXAMPLE_CONFIG) else None)
+        if src:
+            try:
+                cfg.update(_load_json_file(src))
+                log.info("未找到 config.json，已按 %s 创建", os.path.basename(src))
+            except Exception as e:
+                log.error("读取预设配置 %s 失败: %s", src, e)
     elif os.path.exists(CONFIG_PATH):
         try:
             user = _load_json_file(CONFIG_PATH)
