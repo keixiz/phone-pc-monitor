@@ -36,7 +36,7 @@ jobs:
       - name: PyInstaller 打包（单文件、无窗口）
         working-directory: lan
         shell: pwsh
-        run: python -m PyInstaller --clean --onefile --noconsole --name phone-pc-monitor --add-data "static;static" --hidden-import tkinter --collect-submodules pynput --collect-submodules mss monitor-lan.py
+        run: python -m PyInstaller --clean --onefile --noconsole --name phone-pc-monitor --add-data "static;static" --hidden-import tkinter --hidden-import cv2 --collect-submodules pynput --collect-submodules mss monitor-lan.py
 
       - name: 组装发布目录
         working-directory: lan

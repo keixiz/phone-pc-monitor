@@ -5,6 +5,6 @@ Pillow
 psutil
 pynput
 
-# 摄像头画面需要（不装则只能用屏幕，其它功能不受影响）
-# opencv-python
-# numpy
+# 摄像头画面（新版已默认包含，摄像头才能用）
+opencv-python-headless
+numpy

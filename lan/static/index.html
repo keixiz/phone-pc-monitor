@@ -316,6 +316,27 @@
     </div>
 
     <div class="section">
+      <div class="section-title">喊话 / 放音（上传音频到电脑播放）</div>
+      <input type="file" id="audio-file" accept="audio/*" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
+      <div class="row"><button id="audio-upload" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传并播放</button></div>
+      <div class="label" id="audio-status">未播放</div>
+      <div class="row">
+        <button id="audio-pause" class="base">暂停</button>
+        <button id="audio-stop" class="base danger">停止</button>
+        <button id="audio-loop" class="base">循环: 关</button>
+      </div>
+      <div class="label">音量 <span id="audio-vol-val">80</span>%</div>
+      <input type="range" id="audio-vol" min="0" max="100" value="80">
+      <div class="label">已上传（点一下播放）</div>
+      <div id="audio-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">画面卡住？</div>
+      <div class="row"><button id="act-resync" class="base">重新拉画面</button></div>
+    </div>
+
+    <div class="section">
       <div class="section-title">弹窗气泡</div>
       <input type="text" id="popup-text" placeholder="屏幕角落弹个气泡">
       <div class="row"><button id="popup-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>弹出</button></div>
@@ -505,6 +526,8 @@
   var connFails = 0;
   var blobUrl = null, selected = null, fpsWindow = [], toastTimer = null, lastHeader = null;
   var selBg = '#ff3b30', selFg = '#ffffff';
+  var lastFrameAt = 0, lastResyncAt = 0, pageOpenedAt = Date.now();
+  var audioVol = 80, audioLoop = false, audioState = null;
 
   function setStatus(t, c) { status.textContent = t; dot.className = 'dot' + (c ? ' ' + c : ''); }
   function toast(t) {
@@ -586,9 +609,11 @@
         else if (m.type === 'dir_list') renderDir(m);
         else if (m.type === 'file_data') downloadFile(m);
         else if (m.type === 'process_list') renderProcs(m);
+        else if (m.type === 'audio_state') { audioState = m; updateAudioUI(); }
         return;
       }
       if (!lastHeader || lastHeader.agent !== selected) return;
+      lastFrameAt = Date.now();
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       blobUrl = URL.createObjectURL(new Blob([ev.data], {type:'image/jpeg'}));
       img.src = blobUrl; img.style.display = 'block'; ph.style.display = 'none';
@@ -636,6 +661,8 @@
   };
   $('btn-more').onclick = function () {
     $('more-mask').classList.remove('hidden'); $('more-panel').classList.remove('hidden');
+    loadAudioList();
+    updateAudioUI();
   };
   function closeMore() { $('more-mask').classList.add('hidden'); $('more-panel').classList.add('hidden'); }
   $('more-mask').onclick = closeMore;
@@ -830,6 +857,85 @@
     if (!t) return;
     send({type:'tts', text: t});
     toast('正在播放...');
+  };
+
+  // ---------- 喊话 / 放音 ----------
+  function fmtSize(n) {
+    if (!n && n !== 0) return '';
+    return n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
+  }
+  function updateAudioUI() {
+    var st = audioState || {playing: false, paused: false, name: '', loop: audioLoop, volume: audioVol};
+    audioLoop = !!st.loop;
+    var text = '未播放';
+    if (st.playing) text = (st.paused ? '已暂停：' : '正在播放：') + (st.name || '');
+    $('audio-status').textContent = text;
+    $('audio-loop').textContent = '循环: ' + (audioLoop ? '开' : '关');
+    $('audio-pause').textContent = st.paused ? '继续' : '暂停';
+    if (typeof st.volume === 'number') {
+      audioVol = st.volume;
+      $('audio-vol').value = audioVol;
+      $('audio-vol-val').textContent = audioVol;
+    }
+  }
+  function playAudio(name) {
+    send({type:'audio_play', name: name, loop: audioLoop, volume: audioVol});
+  }
+  function loadAudioList() {
+    fetch('/audio_list?token=' + encodeURIComponent(token))
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        var box = $('audio-list'); box.innerHTML = '';
+        if (d.state) { audioState = d.state; updateAudioUI(); }
+        if (!d.files || !d.files.length) {
+          box.innerHTML = '<div style="color:var(--text2);font-size:12px">还没有上传音频</div>';
+          return;
+        }
+        d.files.forEach(function (f) {
+          var b = document.createElement('button');
+          b.className = 'base';
+          b.style.cssText = 'text-align:left;justify-content:flex-start;min-height:38px;';
+          b.textContent = '▶ ' + f.name + '  (' + fmtSize(f.size) + ')';
+          b.onclick = function () { playAudio(f.name); toast('播放：' + f.name); };
+          box.appendChild(b);
+        });
+      })
+      .catch(function (e) { toast('读取音频列表失败：' + e.message); });
+  }
+  $('audio-upload').onclick = function () {
+    var f = $('audio-file').files[0];
+    if (!f) { toast('先选一个音频文件'); return; }
+    if (f.size > 30 * 1024 * 1024) { toast('文件超过 30MB，换小一点的'); return; }
+    var fd = new FormData(); fd.append('file', f);
+    toast('上传中…');
+    fetch('/upload_audio?token=' + encodeURIComponent(token), { method: 'POST', body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) {
+        if (!x.ok || x.d.error) throw new Error(x.d.error || '上传失败');
+        toast('已上传，开始播放');
+        playAudio(x.d.name);
+        loadAudioList();
+      })
+      .catch(function (e) { toast('上传失败：' + e.message); });
+  };
+  $('audio-pause').onclick = function () {
+    send({type: audioState && audioState.paused ? 'audio_resume' : 'audio_pause'});
+  };
+  $('audio-stop').onclick = function () { send({type:'audio_stop'}); };
+  $('audio-loop').onclick = function () {
+    audioLoop = !audioLoop;
+    send({type:'audio_loop', loop: audioLoop});
+    $('audio-loop').textContent = '循环: ' + (audioLoop ? '开' : '关');
+  };
+  $('audio-vol').oninput = function () { $('audio-vol-val').textContent = this.value; };
+  $('audio-vol').onchange = function () {
+    audioVol = +this.value;
+    send({type:'audio_volume', level: audioVol});
+  };
+  $('act-resync').onclick = function () {
+    lastResyncAt = Date.now();
+    send({type:'resync'});
+    toast('已请求重新拉画面');
   };
   // 弹窗
   $('popup-send').onclick = function () {
@@ -1042,6 +1148,17 @@
     send({type:'overlay', text:t, color:selFg, bg:selBg, speed:+$('ov-speed').value, duration:+$('ov-duration').value, pos:selPos});
     closeOv();
   };
+
+  // 画面停住时自动找服务器要新画面（解决偶发定格，不用手动刷新/重启）
+  setInterval(function () {
+    if (!ws || ws.readyState !== 1) return;
+    var now = Date.now();
+    var base = Math.max(lastFrameAt, pageOpenedAt);
+    if (now - base > 8000 && now - lastResyncAt > 8000) {
+      lastResyncAt = now;
+      send({type: 'resync'});
+    }
+  }, 4000);
 
   connect();
 })();

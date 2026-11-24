@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import platform
+import re
 import secrets
 import shutil
 import socket
@@ -36,7 +37,7 @@ import subprocess
 import sys
 import threading
 import time
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import aiohttp
 from aiohttp import web, WSMsgType
@@ -63,6 +64,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 EXAMPLE_CONFIG = os.path.join(RESOURCE_DIR, "config.example.json")
 STATIC_DIR = os.path.join(RESOURCE_DIR, "static")
 PROOF_DIR = os.path.join(BASE_DIR, "proof")
+AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 ACCESS_FILE = os.path.join(BASE_DIR, "访问地址.txt")
 LOG_FILE = os.path.join(BASE_DIR, "monitor-lan.log")
 
@@ -319,6 +321,8 @@ class Hub:
         self.frames = {}          # name -> {source: bytes} 最新一帧
         self.pending_proof = {}   # name -> ts
         self.agent_stream = {}    # name -> 当前观看该设备的 viewer 数（节能统计）
+        self.last_frame_ts = {}   # name -> 最近一次收到画面的时间（卡死看门狗）
+        self.audio_state = {}     # name -> 最近一次音频播放状态
 
 
 hub = Hub()
@@ -393,6 +397,44 @@ def drop_viewer(v):
     hub.viewer_choice.pop(v, None)
 
 
+# 手机页面卡住/断网时 send 可能一直挂着，把整条推流堵死（表现为画面定格、刷新也没用）。
+# 每个 viewer 的发送最多等 3 秒，超时就丢弃这个 viewer，保住其他人的画面。
+SEND_TIMEOUT = 3.0
+
+
+async def _close_ws(ws):
+    try:
+        await asyncio.wait_for(ws.close(), 1.0)
+    except Exception:
+        pass
+
+
+async def try_send_json(ws, obj, timeout=SEND_TIMEOUT):
+    try:
+        await asyncio.wait_for(send_json(ws, obj), timeout)
+        return True
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        log.warning("手机端发送失败，已丢弃这个连接（%s）", e)
+        drop_viewer(ws)
+        asyncio.create_task(_close_ws(ws))
+        return False
+
+
+async def try_send_bytes(ws, data, timeout=SEND_TIMEOUT):
+    try:
+        await asyncio.wait_for(ws.send_bytes(data), timeout)
+        return True
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        log.warning("手机端收画面卡住（超过 %.1f 秒），已丢弃这个连接（%s）", timeout, e)
+        drop_viewer(ws)
+        asyncio.create_task(_close_ws(ws))
+        return False
+
+
 async def recompute_streams():
     """节能：统计每个设备的观看人数，0↔非0 翻转时通知 agent 暂停/恢复推流"""
     for name in list(hub.agents):
@@ -414,10 +456,7 @@ async def broadcast_devices():
     """把当前在线设备列表发给所有 viewer"""
     devs = device_list()
     for v in list(hub.viewers):
-        try:
-            await send_json(v, {"type": "devices", "list": devs})
-        except Exception:
-            drop_viewer(v)
+        await try_send_json(v, {"type": "devices", "list": devs})
 
 
 async def agent_loop(link):
@@ -448,6 +487,7 @@ async def agent_loop(link):
                         "screen_h": data.get("screen_h", 1080),
                     }
                     hub.frames.setdefault(name, {})
+                    hub.last_frame_ts[name] = time.time()
                     log.info("电脑端上线: %s (%s)", name, data.get("os", "unknown"))
                     await broadcast_devices()
                     await recompute_streams()
@@ -455,22 +495,24 @@ async def agent_loop(link):
                     if name not in hub.agents:
                         continue
                     hub.agents[name]["source"] = data.get("source", "screen")
+                    dropped = False
                     for v in viewer_targets(name):
-                        try:
-                            await send_json(
-                                v,
-                                {"type": "frame", "source": data.get("source"), "agent": name},
-                            )
-                        except Exception:
-                            drop_viewer(v)
+                        if not await try_send_json(
+                                v, {"type": "frame", "source": data.get("source"), "agent": name}):
+                            dropped = True
+                    if dropped:
+                        await recompute_streams()
                 elif name is not None and t in (
                         "stats", "motion", "dir_list", "file_data", "chat",
-                        "process_list", "toast"):
+                        "process_list", "toast", "audio_state"):
+                    if t == "audio_state":
+                        hub.audio_state[name] = data
+                    dropped = False
                     for v in viewer_targets(name):
-                        try:
-                            await send_json(v, data)
-                        except Exception:
-                            drop_viewer(v)
+                        if not await try_send_json(v, data):
+                            dropped = True
+                    if dropped:
+                        await recompute_streams()
                     if t == "toast":
                         log.info("%s: %s", name, data.get("text", ""))
                 elif t == "proof" and name is not None:
@@ -501,11 +543,13 @@ async def agent_loop(link):
                     continue
                 source = hub.agents[name]["source"]
                 hub.frames[name][source] = payload
+                hub.last_frame_ts[name] = time.time()
+                dropped = False
                 for v in viewer_targets(name):
-                    try:
-                        await v.send_bytes(payload)
-                    except Exception:
-                        drop_viewer(v)
+                    if not await try_send_bytes(v, payload):
+                        dropped = True
+                if dropped:
+                    await recompute_streams()
     finally:
         if name is not None:
             entry = hub.agents.get(name)
@@ -514,6 +558,8 @@ async def agent_loop(link):
                 hub.agent_stream.pop(name, None)
                 hub.pending_proof.pop(name, None)
                 hub.frames.pop(name, None)
+                hub.last_frame_ts.pop(name, None)
+                hub.audio_state.pop(name, None)
                 # 选中这台设备的 viewer 改回跟随默认
                 for v, c in list(hub.viewer_choice.items()):
                     if c == name:
@@ -534,15 +580,19 @@ async def send_cached_frame(ws):
         source = hub.agents[target].get("source", "screen")
         data = hub.frames.get(target, {}).get(source)
         if data:
-            await send_json(ws, {"type": "frame", "source": source, "agent": target})
-            await ws.send_bytes(data)
+            if not await try_send_json(ws, {"type": "frame", "source": source, "agent": target}):
+                return
+            await try_send_bytes(ws, data)
+        audio = hub.audio_state.get(target)
+        if audio:
+            await try_send_json(ws, audio)
 
 
 async def viewer_session(request, ws):
     """处理手机端连接：选择设备、接收画面、转发控制指令、触发通知"""
     hub.viewers.add(ws)
     try:
-        await send_json(ws, {"type": "devices", "list": device_list()})
+        await try_send_json(ws, {"type": "devices", "list": device_list()})
         await send_cached_frame(ws)
         await recompute_streams()
         async for msg in ws:
@@ -556,11 +606,15 @@ async def viewer_session(request, ws):
                     target = data.get("name")
                     if target in hub.agents:
                         hub.viewer_choice[ws] = target
-                        await send_json(ws, {"type": "selected", "name": target})
+                        await try_send_json(ws, {"type": "selected", "name": target})
                         await send_cached_frame(ws)
                         await recompute_streams()
                     else:
-                        await send_json(ws, {"type": "toast", "text": f"设备 {target} 不在线"})
+                        await try_send_json(ws, {"type": "toast", "text": f"设备 {target} 不在线"})
+                elif t == "resync":
+                    # 手机端发现画面停住时自动请求：恢复推流 + 补发最新帧
+                    await recompute_streams()
+                    await send_cached_frame(ws)
                 elif t == "set_source":
                     target = data.get("source", "screen")
                     choice = hub.viewer_choice.get(ws)
@@ -574,24 +628,24 @@ async def viewer_session(request, ws):
                             pass
                 elif t == "notify":
                     result = await push_notify(data.get("text", "手机端手动测试通知"))
-                    await send_json(ws, {"type": "toast", "text": result})
+                    await try_send_json(ws, {"type": "toast", "text": result})
                 elif t in ("overlay", "exec", "open_path", "clipboard", "blackout",
                            "mouse", "list_dir", "download", "chat", "wallpaper",
                            "snapshot", "key", "brightness", "process_list",
                            "kill_process", "proof_interval", "tts", "popup",
-                           "alarm", "draw", "draw_clear"):
+                           "alarm", "draw", "draw_clear", "audio_play", "audio_pause",
+                           "audio_resume", "audio_stop", "audio_volume", "audio_loop"):
                     choice = hub.viewer_choice.get(ws)
                     if choice not in hub.agents and hub.agents:
                         choice = list(hub.agents)[0]
                     if choice in hub.agents:
                         await hub.agents[choice]["link"].server_send_json(data)
                     else:
-                        await send_json(ws, {"type": "toast", "text": "没有在线电脑"})
+                        await try_send_json(ws, {"type": "toast", "text": "没有在线电脑"})
             elif msg.type == WSMsgType.ERROR:
                 break
     finally:
-        hub.viewers.discard(ws)
-        hub.viewer_choice.pop(ws, None)
+        drop_viewer(ws)
         await recompute_streams()
 
 
@@ -707,31 +761,78 @@ def make_screen_grabber():
 
 class Camera:
     """摄像头懒加载：切到摄像头才打开，切回屏幕就释放"""
+
     def __init__(self):
         self.cap = None
         self.cv2 = None
+        self.last_fail = 0.0
+        self.fail_reason = ""
+
+    def _open(self):
+        cv2 = self.cv2
+        idx = int(CFG.get("camera_index", 0))
+        # Windows 下默认 MSMF 经常打不开或初始化很慢，优先 DirectShow
+        if sys.platform == "win32":
+            backends = [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("默认", cv2.CAP_ANY)]
+        else:
+            backends = [("默认", cv2.CAP_ANY)]
+        for label, backend in backends:
+            cap = None
+            try:
+                cap = cv2.VideoCapture(idx, backend)
+                if cap is None or not cap.isOpened():
+                    raise RuntimeError("无法打开设备")
+                # 预热：部分摄像头前几帧是黑的/读不到
+                ok, frame = False, None
+                for _ in range(10):
+                    ok, frame = cap.read()
+                    if ok:
+                        break
+                    time.sleep(0.1)
+                if not ok:
+                    raise RuntimeError("能打开但读不到画面（可能被其他程序占用）")
+                self.cap = cap
+                log.info("摄像头已打开（后端 %s，编号 %s）", label, idx)
+                self.fail_reason = ""
+                return True
+            except Exception as e:
+                try:
+                    if cap is not None:
+                        cap.release()
+                except Exception:
+                    pass
+                log.warning("摄像头后端 %s 打开失败: %s", label, e)
+        return False
 
     def _ensure(self):
         if self.cap is not None:
-            return True
+            try:
+                if self.cap.isOpened():
+                    return True
+            except Exception:
+                pass
+            self.release()
+        now = time.time()
+        if now - self.last_fail < 5:   # 失败后 5 秒内不反复尝试，避免卡顿和刷日志
+            return False
         try:
             import cv2
-            self.cv2 = cv2
-            self.cap = cv2.VideoCapture(CFG["camera_index"])
-            if not self.cap.isOpened():
-                self.cap.release()
-                self.cap = None
-                log.warning("摄像头打不开")
-                return False
-            log.info("摄像头已打开")
-            return True
         except ImportError:
-            log.warning("未安装 opencv-python，摄像头不可用")
+            self.last_fail = now
+            self.fail_reason = "摄像头组件没装：请安装 opencv-python-headless（新版 exe 已内置）"
+            log.warning(self.fail_reason)
             return False
+        self.cv2 = cv2
+        try:
+            ok = self._open()
         except Exception as e:
-            self.cap = None
-            log.error("摄像头初始化失败: %s", e)
-            return False
+            ok = False
+            log.error("摄像头初始化异常: %s", e)
+        if not ok:
+            self.last_fail = now
+            self.fail_reason = "摄像头打不开：被其他程序占用（微信/QQ/相机），或电脑没有可用摄像头"
+            log.warning("摄像头打不开（编号 %s）", CFG.get("camera_index", 0))
+        return ok
 
     def release(self):
         if self.cap is not None:
@@ -746,16 +847,23 @@ class Camera:
         if not self._ensure():
             return None
         try:
-            ok = False; frame = None
+            ok, frame = False, None
             for _ in range(3):
                 ok, frame = self.cap.read()
-                if ok: break
+                if ok:
+                    break
+                time.sleep(0.05)
             if not ok:
+                log.warning("摄像头读帧失败，释放后重试")
+                self.release()
+                self.last_fail = time.time()
                 return None
             ok, buf = self.cv2.imencode(".jpg", frame, [self.cv2.IMWRITE_JPEG_QUALITY, CFG["jpeg_quality"]])
             return buf.tobytes() if ok else None
         except Exception as e:
             log.error("摄像头采集失败: %s", e)
+            self.release()
+            self.last_fail = time.time()
             return None
 
 
@@ -1176,9 +1284,46 @@ def do_alarm(delay, text):
 _draw_canvas = None
 _draw_win = None
 
+
+def _draw_alive():
+    try:
+        return _draw_win is not None and bool(_draw_win.winfo_exists())
+    except Exception:
+        return False
+
+
+def _draw_reset():
+    global _draw_win, _draw_canvas
+    if _draw_win is not None:
+        try:
+            _draw_win.destroy()
+        except Exception:
+            pass
+    _draw_win = None
+    _draw_canvas = None
+
+
+def _draw_hide():
+    """隐藏画布（保留内容）；窗口已经被关掉就直接重置，下次能重建"""
+    global _draw_win
+    try:
+        if _draw_alive():
+            _draw_win.withdraw()
+            _draw_win.update_idletasks()
+        else:
+            _draw_reset()
+    except Exception:
+        _draw_reset()
+
+
 def _draw_init():
     global _draw_win, _draw_canvas
     import tkinter as tk
+    if _draw_win is not None:
+        try:
+            _draw_win.destroy()
+        except Exception:
+            pass
     _draw_win = tk.Toplevel(_tk_root)
     _draw_win.overrideredirect(True)
     _draw_win.attributes("-topmost", True)
@@ -1194,28 +1339,52 @@ def _draw_init():
         _draw_win.attributes("-transparentcolor", "black")
     else:
         _draw_win.attributes("-alpha", 0.3)  # 非 Windows 用半透明兜底
+    _draw_win.bind("<Escape>", lambda e: _draw_hide())
     _draw_win.withdraw()
     log.info("涂鸦画布已创建 %sx%s", sw, sh)
 
+
+def _draw_stroke(x1, y1, x2, y2, color):
+    """在画布上画一段；窗口被关掉过也能自动重建"""
+    global _draw_win, _draw_canvas
+    if not _draw_alive() or _draw_canvas is None:
+        _draw_reset()
+        _draw_init()
+    _draw_win.deiconify()
+    _draw_win.lift()
+    _draw_win.update_idletasks()
+    _draw_win.update()
+    _draw_canvas.create_line(x1, y1, x2, y2, fill=color, width=6, capstyle="round", smooth=True)
+
+
 def draw_segment(x1, y1, x2, y2, color="#ff3b30"):
     def work():
-        global _draw_win, _draw_canvas
-        if _draw_canvas is None:
-            _draw_init()
-        _draw_win.deiconify()
-        _draw_win.lift()
-        _draw_win.update_idletasks()
-        _draw_win.update()
-        _draw_canvas.create_line(x1, y1, x2, y2, fill=color, width=6, capstyle="round", smooth=True)
-        log.info("涂鸦线段: (%s,%s)->(%s,%s) %s", x1, y1, x2, y2, color)
+        try:
+            _draw_stroke(x1, y1, x2, y2, color)
+            log.info("涂鸦线段: (%s,%s)->(%s,%s) %s", x1, y1, x2, y2, color)
+        except Exception as e:
+            # 画布被系统/用户关掉后再画会抛 TclError：清掉重来一次
+            log.error("涂鸦窗口异常（%s），重建画布", e)
+            try:
+                _draw_reset()
+                _draw_stroke(x1, y1, x2, y2, color)
+                log.info("涂鸦画布已重建")
+            except Exception as e2:
+                log.error("涂鸦重建失败: %s", e2)
     _post(work)
+
 
 def draw_clear():
     def work():
-        if _draw_canvas is not None:
-            _draw_canvas.delete("all")
-            _draw_win.withdraw()
-            _draw_win.update_idletasks()
+        try:
+            if _draw_canvas is not None and _draw_alive():
+                _draw_canvas.delete("all")
+                _draw_hide()
+            else:
+                _draw_reset()
+        except Exception as e:
+            log.error("清空涂鸦失败: %s", e)
+            _draw_reset()
     _post(work)
 
 
@@ -1390,6 +1559,125 @@ def set_clipboard(text):
     _post(work)
 
 
+# ---------- 喊话 / 放音（Windows MCI，支持播放/暂停/继续/停止/音量/循环） ----------
+
+_audio_alias = "pcm_audio"
+_audio_state = {"playing": False, "paused": False, "name": "", "loop": False, "volume": 80}
+
+
+def _mci(cmd):
+    """执行一条 Windows MCI 命令，返回 (错误码, 输出/错误信息)"""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(512)
+        r = ctypes.windll.winmm.mciSendStringW(cmd, buf, 511, 0)
+        if r != 0:
+            err = ctypes.create_unicode_buffer(256)
+            try:
+                ctypes.windll.winmm.mciGetErrorStringW(r, err, 255)
+                return r, err.value
+            except Exception:
+                return r, buf.value
+        return 0, buf.value
+    except Exception as e:
+        return -1, str(e)
+
+
+def _audio_open(path):
+    _mci("close " + _audio_alias)
+    ext = os.path.splitext(path)[1].lower()
+    tries = ([" type waveaudio", " type mpegvideo", ""] if ext == ".wav"
+             else [" type mpegvideo", "", " type waveaudio"])
+    err = ""
+    for extra in tries:
+        r, err = _mci('open "%s"%s alias %s' % (path, extra, _audio_alias))
+        if r == 0:
+            return True
+    log.error("音频打开失败: %s", err)
+    return False
+
+
+def audio_play(name, loop=False, volume=None):
+    if sys.platform != "win32":
+        log.warning("音频播放目前只支持 Windows：%s", name)
+        return False
+    safe = os.path.basename(str(name or ""))
+    path = os.path.join(AUDIO_DIR, safe)
+    if not safe or not os.path.isfile(path):
+        log.warning("音频文件不存在: %s", path)
+        return False
+    try:
+        audio_stop()
+        if not _audio_open(path):
+            return False
+        if volume is not None:
+            audio_set_volume(volume)
+        r, err = _mci("play " + _audio_alias)
+        if r != 0:
+            log.error("播放音频失败: %s", err)
+            _mci("close " + _audio_alias)
+            return False
+        _audio_state.update(playing=True, paused=False, name=safe, loop=bool(loop))
+        log.info("播放音频: %s（循环=%s，音量=%s%%）", safe, bool(loop), _audio_state["volume"])
+        return True
+    except Exception as e:
+        log.error("播放音频异常: %s", e)
+        return False
+
+
+def audio_pause():
+    if sys.platform != "win32" or not _audio_state["playing"] or _audio_state["paused"]:
+        return
+    _mci("pause " + _audio_alias)
+    _audio_state["paused"] = True
+    log.info("音频已暂停")
+
+
+def audio_resume():
+    if sys.platform != "win32" or not _audio_state["playing"] or not _audio_state["paused"]:
+        return
+    _mci("resume " + _audio_alias)
+    _audio_state["paused"] = False
+    log.info("音频已继续")
+
+
+def audio_stop():
+    if sys.platform != "win32":
+        return False
+    _mci("stop " + _audio_alias)
+    _mci("close " + _audio_alias)
+    if _audio_state["playing"] or _audio_state["name"]:
+        log.info("音频已停止")
+    _audio_state.update(playing=False, paused=False, name="")
+    return True
+
+
+def audio_set_volume(level):
+    try:
+        level = max(0, min(100, int(level)))
+    except Exception:
+        return
+    _audio_state["volume"] = level
+    if sys.platform != "win32":
+        return
+    r, _ = _mci("setaudio %s volume to %d" % (_audio_alias, level * 10))
+    if r != 0:
+        # 某些格式不支持 MCI 音量，退回系统波形音量（注意：会影响电脑全局音量）
+        try:
+            import ctypes
+            v = int(level / 100 * 0xFFFF)
+            ctypes.windll.winmm.waveOutSetVolume(0, v | (v << 16))
+        except Exception:
+            pass
+    log.info("音频音量: %s%%", level)
+
+
+async def _send_audio_state(link):
+    msg = dict(_audio_state)
+    msg["type"] = "audio_state"
+    await link_send(link, msg)
+
+
 # ======================================================================
 # 本机引擎：推流 / 状态 / 存证 / 启动
 # ======================================================================
@@ -1492,9 +1780,9 @@ async def dispatch(link, state, screen_grab, cam, data):
         src = data.get("source", "screen")
         state["source"] = src
         if src == "camera" and not cam._ensure():
-            # 摄像头不可用别让手机端一脸茫然：画面卡住时给个提示
+            # 摄像头不可用别让手机端一脸茫然：画面卡住时给具体原因
             await link_send(link, {"type": "toast",
-                                   "text": "摄像头不可用：装 opencv-python numpy，或检查是否被占用"})
+                                   "text": cam.fail_reason or "摄像头不可用"})
         elif src == "screen":
             cam.release()   # 无人观看处于暂停状态时切换，也要把摄像头放掉
     elif t == "overlay":
@@ -1547,6 +1835,28 @@ async def dispatch(link, state, screen_grab, cam, data):
         log.info("自动存证间隔: %s秒", state["proof_interval"])
     elif t == "tts":
         await run_blocking(do_tts, data.get("text", ""))
+    elif t == "audio_play":
+        ok = await run_blocking(audio_play, data.get("name", ""),
+                                bool(data.get("loop", False)), data.get("volume"))
+        if not ok:
+            await link_send(link, {"type": "toast",
+                                   "text": "音频播放失败：文件不存在，或电脑端不支持该格式"})
+        await _send_audio_state(link)
+    elif t == "audio_pause":
+        await run_blocking(audio_pause)
+        await _send_audio_state(link)
+    elif t == "audio_resume":
+        await run_blocking(audio_resume)
+        await _send_audio_state(link)
+    elif t == "audio_stop":
+        await run_blocking(audio_stop)
+        await _send_audio_state(link)
+    elif t == "audio_volume":
+        await run_blocking(audio_set_volume, data.get("level", 80))
+        await _send_audio_state(link)
+    elif t == "audio_loop":
+        _audio_state["loop"] = bool(data.get("loop", False))
+        await _send_audio_state(link)
     elif t == "popup":
         do_popup(data.get("text", ""), data.get("duration", 5))
     elif t == "alarm":
@@ -1633,8 +1943,20 @@ async def stream(link, state, screen_grab, cam):
     frame_count = 0
     motion_cooldown = 0
     last_src = state["source"]
+    last_restart = state.get("restart_at", 0)
     last_proof = time.time()
     while True:
+        if state.get("restart_at", 0) != last_restart:
+            last_restart = state.get("restart_at", 0)
+            try:
+                cam.release()
+            except Exception:
+                pass
+            if state["source"] == "camera":
+                cam._ensure()
+            prev_small = None
+            frame_count = 0
+            log.info("推流已按看门狗要求重新开始")
         if not state.get("stream_on", True):
             # 无人观看：完全静默，阻塞等待有人观看（零 CPU 占用）
             await state["stream_event"].wait()
@@ -1828,6 +2150,73 @@ async def supervise(name, coro_factory, delay=2.0):
         backoff = min(backoff * 2, 30)
 
 
+ENGINE_STATE = {}
+
+
+async def stream_watchdog():
+    """兜底：手机在看着、却超过 15 秒没收到画面时，主动恢复推流"""
+    while True:
+        await asyncio.sleep(5)
+        try:
+            now = time.time()
+            for name in list(hub.agents):
+                if sum(1 for v in hub.viewers if viewer_wants(v, name)) <= 0:
+                    continue
+                if hub.agent_stream.get(name, 0) <= 0:
+                    continue
+                last = hub.last_frame_ts.get(name, 0)
+                if last and now - last <= 15:
+                    continue
+                log.warning("设备 %s 超过 %d 秒没有画面，正在恢复推流",
+                            name, 0 if not last else int(now - last))
+                hub.last_frame_ts[name] = now
+                try:
+                    await hub.agents[name]["link"].server_send_json(
+                        {"type": "stream_ctrl", "on": True})
+                except Exception as e:
+                    log.error("恢复推流指令失败: %s", e)
+                st = ENGINE_STATE.get("state")
+                if st is not None:
+                    st["stream_event"].set()
+                    st["restart_at"] = now      # 让 stream 重新开摄像头/采集
+                await broadcast_devices()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.error("推流看门狗异常: %s", e)
+
+
+async def audio_monitor(link):
+    """跟踪电脑端音频播放状态，状态变化时同步给手机（播完/循环）"""
+    last = None
+    while True:
+        await asyncio.sleep(1.2)
+        if sys.platform != "win32":
+            continue
+        try:
+            st = dict(_audio_state)
+            if st.get("playing"):
+                r, mode = _mci("status %s mode" % _audio_alias)
+                if r == 0 and mode.strip() == "stopped" and not st.get("paused"):
+                    if st.get("loop"):
+                        _mci("seek %s to start" % _audio_alias)
+                        _mci("play %s" % _audio_alias)
+                    else:
+                        _mci("close %s" % _audio_alias)
+                        _audio_state.update(playing=False, paused=False, name="")
+                        st = dict(_audio_state)
+            key = (st.get("playing"), st.get("paused"), st.get("name"), st.get("loop"), st.get("volume"))
+            if key != last:
+                last = key
+                msg = dict(st)
+                msg["type"] = "audio_state"
+                await link_send(link, msg)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.error("音频状态同步失败: %s", e)
+
+
 async def start_engine():
     """启动本机采集引擎，返回需要随服务关闭的任务列表"""
     if CFG.get("demo"):
@@ -1875,19 +2264,100 @@ async def start_engine():
         asyncio.create_task(supervise("stats", lambda: report_stats(link, state)),
                              name="agent-stats"),
     ]
+    ENGINE_STATE["state"] = state
+    ENGINE_STATE["cam"] = cam
+    tasks.append(asyncio.create_task(supervise("audio", lambda: audio_monitor(link)),
+                                     name="agent-audio"))
     log.info("本机采集已启动: %s（%sx%s，屏幕 %s）", name, sw, sh, "摄像头" if state["source"] == "camera" else "屏幕")
     return tasks
+
+
+AUDIO_EXTS = {".wav", ".mp3", ".wma", ".m4a", ".ogg", ".flac", ".aac"}
+AUDIO_MAX_BYTES = 30 * 1024 * 1024
+
+
+def _safe_audio_name(filename):
+    # 浏览器/ multipart 可能把中文文件名做百分号编码，先还原
+    base = os.path.basename(unquote(str(filename or "")))
+    stem, ext = os.path.splitext(base)
+    ext = ext.lower()
+    if ext not in AUDIO_EXTS:
+        return None
+    stem = re.sub(r"[^0-9A-Za-z_\u4e00-\u9fa5-]+", "_", stem).strip("_")[:48] or "audio"
+    return stem + ext
+
+
+async def upload_audio(request):
+    """手机上传音频到电脑（限 30MB，token 校验）"""
+    if not check_token(request):
+        return web.Response(status=401, text="unauthorized")
+    try:
+        form = await request.post()
+    except Exception as e:
+        return web.json_response({"error": "上传解析失败: %s" % e}, status=400)
+    f = form.get("file")
+    if f is None or not getattr(f, "filename", ""):
+        return web.json_response({"error": "没有收到音频文件"}, status=400)
+    name = _safe_audio_name(f.filename)
+    if not name:
+        return web.json_response({"error": "格式不支持，请用 mp3 / wav / wma / m4a"}, status=400)
+    try:
+        raw = f.file.read()
+    except Exception as e:
+        return web.json_response({"error": "读取上传内容失败: %s" % e}, status=400)
+    if not raw:
+        return web.json_response({"error": "文件是空的"}, status=400)
+    if len(raw) > AUDIO_MAX_BYTES:
+        return web.json_response({"error": "文件太大（最大 30MB）"}, status=413)
+    os.makedirs(AUDIO_DIR, exist_ok=True)
+    stem, ext = os.path.splitext(name)
+    path = os.path.join(AUDIO_DIR, name)
+    n = 1
+    while os.path.exists(path):
+        path = os.path.join(AUDIO_DIR, "%s-%d%s" % (stem, n, ext))
+        n += 1
+    try:
+        with open(path, "wb") as fp:
+            fp.write(raw)
+    except Exception as e:
+        return web.json_response({"error": "保存失败: %s" % e}, status=500)
+    log.info("收到音频: %s（%.1f KB）", os.path.basename(path), len(raw) / 1024)
+    return web.json_response({"ok": True, "name": os.path.basename(path), "size": len(raw)})
+
+
+async def audio_list(request):
+    """已上传的音频列表（token 校验）"""
+    if not check_token(request):
+        return web.Response(status=401, text="unauthorized")
+    os.makedirs(AUDIO_DIR, exist_ok=True)
+    items = []
+    try:
+        for fn in os.listdir(AUDIO_DIR):
+            p = os.path.join(AUDIO_DIR, fn)
+            if not os.path.isfile(p):
+                continue
+            try:
+                items.append({"name": fn, "size": os.path.getsize(p), "mtime": os.path.getmtime(p)})
+            except Exception:
+                pass
+    except Exception as e:
+        log.error("音频列表失败: %s", e)
+    items.sort(key=lambda x: -x["mtime"])
+    return web.json_response({"files": items[:50],
+                              "state": dict(_audio_state)})
 
 
 async def main():
     enable_dpi_awareness()
 
-    app = web.Application()
+    app = web.Application(client_max_size=64 * 1024 * 1024)
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)
     app.router.add_get("/health", health)
     app.router.add_get("/proof_list", proof_list)
     app.router.add_get("/proof_file", proof_file)
+    app.router.add_post("/upload_audio", upload_audio)
+    app.router.add_get("/audio_list", audio_list)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -1910,6 +2380,7 @@ async def main():
         except Exception as e:
             log.error("本机采集启动失败（服务器继续运行）: %s", e)
     tasks.append(asyncio.create_task(network_watch(), name="net-watch"))
+    tasks.append(asyncio.create_task(stream_watchdog(), name="stream-watchdog"))
 
     try:
         await asyncio.Event().wait()
