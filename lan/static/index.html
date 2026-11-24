@@ -117,6 +117,7 @@
     justify-content: center; gap: 5px; transition: all .16s; cursor: pointer; min-height: 52px;
     backdrop-filter: blur(12px); border: 1px solid var(--border); }
   button.base:active { transform: scale(.94); }
+  button.base:disabled { opacity: .4; }
   button.base .ic { color: var(--text2); }
   button.base:hover { border-color: var(--border2); }
   button.base.primary { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
@@ -334,6 +335,19 @@
     <div class="section">
       <div class="section-title">画面卡住？</div>
       <div class="row"><button id="act-resync" class="base">重新拉画面</button></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">系统更新（热更新）</div>
+      <div class="label" id="ver-line">当前版本：…</div>
+      <input type="file" id="update-file" accept=".zip" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
+      <div class="row"><button id="update-upload" class="base primary">上传更新包</button></div>
+      <div class="label" id="update-status">未选择更新包</div>
+      <div class="row">
+        <button id="update-apply" class="base warn" disabled>应用并重启</button>
+        <button id="update-cancel" class="base" disabled>取消</button>
+      </div>
+      <div class="label" style="font-size:11px;color:var(--text3);line-height:1.5">更新包用 GitHub Releases 里的 phone-pc-monitor-win.zip。上传后会校验 sha256；应用时页面立即生效，程序自动重启（手机断线几秒后自动重连）。</div>
     </div>
 
     <div class="section">
@@ -663,6 +677,7 @@
     $('more-mask').classList.remove('hidden'); $('more-panel').classList.remove('hidden');
     loadAudioList();
     updateAudioUI();
+    loadVersion();
   };
   function closeMore() { $('more-mask').classList.add('hidden'); $('more-panel').classList.add('hidden'); }
   $('more-mask').onclick = closeMore;
@@ -936,6 +951,74 @@
     lastResyncAt = Date.now();
     send({type:'resync'});
     toast('已请求重新拉画面');
+  };
+
+  // ---------- 系统更新（热更新） ----------
+  function fmtBytes(n) {
+    if (!n && n !== 0) return '';
+    if (n > 1048576) return (n / 1048576).toFixed(1) + 'MB';
+    return Math.round(n / 1024) + 'KB';
+  }
+  function loadVersion() {
+    fetch('/version?token=' + encodeURIComponent(token))
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        var line = '当前版本：' + (d.version || '?') + '（' + (d.mode === 'exe' ? 'exe' : '源码') + '）';
+        var p = d.pending;
+        if (p && p.version) line += ' · 待应用：' + p.version;
+        $('ver-line').textContent = line;
+        var pending = !!(p && (p.has_payload || (p.static_files && p.static_files.length)));
+        $('update-apply').disabled = !pending;
+        $('update-cancel').disabled = !pending;
+        if (pending) {
+          $('update-status').textContent = '待应用 ' + (p.version || '') +
+            '（' + (p.has_payload ? '程序 + 页面' : '仅页面') + '，' + fmtBytes(p.size || 0) + '）';
+        } else if (!$('update-status').dataset.uploaded) {
+          $('update-status').textContent = '未选择更新包';
+        }
+      })
+      .catch(function (e) { $('ver-line').textContent = '版本读取失败：' + e.message; });
+  }
+  $('update-upload').onclick = function () {
+    var f = $('update-file').files[0];
+    if (!f) { toast('先选一个更新包（zip）'); return; }
+    if (f.size > 250 * 1024 * 1024) { toast('更新包超过 250MB'); return; }
+    var fd = new FormData(); fd.append('file', f);
+    $('update-status').textContent = '上传中…（' + fmtBytes(f.size) + '）';
+    fetch('/upload_update?token=' + encodeURIComponent(token), { method: 'POST', body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) {
+        if (!x.ok || x.d.error) throw new Error(x.d.error || '上传失败');
+        $('update-status').dataset.uploaded = '1';
+        $('update-status').textContent = '已就绪：' + (x.d.pending.version || '') + '（点「应用并重启」）';
+        toast('更新包已上传');
+        loadVersion();
+      })
+      .catch(function (e) {
+        $('update-status').textContent = '上传失败：' + e.message;
+        toast('上传失败：' + e.message);
+      });
+  };
+  $('update-apply').onclick = function () {
+    if (!confirm('应用更新并重启电脑端程序？手机这边会断线几秒后自动重连。')) return;
+    $('update-status').textContent = '正在应用…';
+    fetch('/apply_update?token=' + encodeURIComponent(token), { method: 'POST' })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) {
+        if (!x.ok || x.d.error) throw new Error(x.d.error || '应用失败');
+        $('update-status').textContent = x.d.message || '已应用';
+        toast(x.d.message || '已应用');
+        if (x.d.restart) setTimeout(function () { location.reload(); }, 7000);
+        else setTimeout(loadVersion, 1500);
+      })
+      .catch(function (e) {
+        $('update-status').textContent = '应用失败：' + e.message;
+        toast('应用失败：' + e.message);
+      });
+  };
+  $('update-cancel').onclick = function () {
+    fetch('/discard_update?token=' + encodeURIComponent(token), { method: 'POST' })
+      .then(function () { $('update-status').textContent = '已取消'; loadVersion(); });
   };
   // 弹窗
   $('popup-send').onclick = function () {

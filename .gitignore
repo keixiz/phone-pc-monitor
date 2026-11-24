@@ -22,3 +22,6 @@ lan/config.default.json
 
 # 上传的音频
 lan/audio/
+
+# 热更新暂存目录
+lan/updates/

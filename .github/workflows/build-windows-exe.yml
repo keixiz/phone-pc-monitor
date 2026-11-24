@@ -38,13 +38,28 @@ jobs:
         shell: pwsh
         run: python -m PyInstaller --clean --onefile --noconsole --name phone-pc-monitor --add-data "static;static" --hidden-import tkinter --hidden-import cv2 --collect-submodules pynput --collect-submodules mss monitor-lan.py
 
-      - name: 组装发布目录
+      - name: 组装发布目录 + 生成热更新清单
         working-directory: lan
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "dist\phone-pc-monitor" | Out-Null
           Copy-Item "dist\phone-pc-monitor.exe" "dist\phone-pc-monitor\" -Force
           Copy-Item "config.example.json","README.md","预设配置.bat","开机自启.bat","开机自启-取消.bat","后台启动.vbs","启动热点并运行.bat","开启热点.ps1","关闭热点.ps1","开放防火墙.bat" "dist\phone-pc-monitor\" -Force
+          New-Item -ItemType Directory -Force -Path "dist\phone-pc-monitor\static" | Out-Null
+          Copy-Item "static\index.html" "dist\phone-pc-monitor\static\" -Force
+          $exe = Get-Item "dist\phone-pc-monitor\phone-pc-monitor.exe"
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $ver = $env:GITHUB_REF_NAME } else { $ver = 'dev-' + $env:GITHUB_SHA.Substring(0,7) }
+          $manifest = [ordered]@{
+            version = $ver
+            file = 'phone-pc-monitor.exe'
+            sha256 = $hash
+            size = $exe.Length
+            built_at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            notes = 'Phone PC Monitor ' + $ver
+          } | ConvertTo-Json
+          $manifest | Out-File -Encoding utf8 "dist\phone-pc-monitor\update-manifest.json"
+          Write-Host "update-manifest: $ver sha256=$hash"
           Compress-Archive -Path "dist\phone-pc-monitor\*" -DestinationPath "dist\phone-pc-monitor-win.zip" -Force
 
       - name: 上传产物（Actions 页面可下载）

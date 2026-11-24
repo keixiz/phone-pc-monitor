@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import base64
 import io
+import hashlib
 import json
 import logging
 import os
@@ -35,6 +36,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import zipfile
 import threading
 import time
 from urllib.parse import quote, unquote
@@ -67,6 +69,12 @@ PROOF_DIR = os.path.join(BASE_DIR, "proof")
 AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 ACCESS_FILE = os.path.join(BASE_DIR, "访问地址.txt")
 LOG_FILE = os.path.join(BASE_DIR, "monitor-lan.log")
+UPDATES_DIR = os.path.join(BASE_DIR, "updates")
+STATIC_OVERRIDE_DIR = os.path.join(BASE_DIR, "static")   # 热更新后的页面放这里，优先于 exe 内置页面
+APP_VERSION = "3.3"
+UPDATE_MAX_BYTES = 250 * 1024 * 1024
+UPDATE_PAYLOAD_EXTS = (".exe", ".py")
+UPDATE_STATIC_EXTS = (".html", ".js", ".css", ".svg", ".png", ".ico", ".woff2", ".json", ".txt")
 
 
 # ---------- 日志（pythonw / exe 无窗口时写文件，否则看不到任何报错） ----------
@@ -670,10 +678,13 @@ async def ws_handler(request):
 
 
 async def index(request):
-    page = os.path.join(STATIC_DIR, "index.html")
+    # 热更新过的页面放在 BASE_DIR/static/，优先使用；没有再回退到 exe 内置页面
+    page = os.path.join(STATIC_OVERRIDE_DIR, "index.html")
+    if not os.path.isfile(page):
+        page = os.path.join(STATIC_DIR, "index.html")
     if not os.path.exists(page):
         return web.Response(status=500, text="static/index.html 缺失，请重新安装/打包")
-    return web.FileResponse(page)
+    return web.FileResponse(page, headers={"Cache-Control": "no-cache"})
 
 
 async def health(request):
@@ -2347,10 +2358,363 @@ async def audio_list(request):
                               "state": dict(_audio_state)})
 
 
+# ---------- 热更新：手机浏览器上传更新包，电脑端自己替换/重启 ----------
+
+UPDATE_MANIFEST_NAMES = ("update-manifest.json", "manifest.json")
+
+
+def _sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _runtime_mode():
+    return "exe" if FROZEN else "source"
+
+
+def _read_pending_update():
+    path = os.path.join(UPDATES_DIR, "pending.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _write_pending_update(data):
+    os.makedirs(UPDATES_DIR, exist_ok=True)
+    tmp = os.path.join(UPDATES_DIR, "pending.json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, os.path.join(UPDATES_DIR, "pending.json"))
+
+
+def _clear_pending_update(keep_payload=False):
+    try:
+        shutil.rmtree(os.path.join(UPDATES_DIR, "static"), ignore_errors=True)
+    except Exception:
+        pass
+    names = ["pending.json", "payload.tmp"]
+    if not keep_payload:
+        names.append("payload.bin")
+    for name in names:
+        try:
+            os.remove(os.path.join(UPDATES_DIR, name))
+        except Exception:
+            pass
+
+
+def _cleanup_updates_on_start():
+    """启动时清掉上次没被用掉的更新文件（重启脚本已经用完）"""
+    try:
+        if not os.path.isfile(os.path.join(UPDATES_DIR, "pending.json")):
+            for name in ("payload.bin", "upload-tmp.zip"):
+                p = os.path.join(UPDATES_DIR, name)
+                if os.path.isfile(p):
+                    os.remove(p)
+    except Exception:
+        pass
+
+
+def _safe_member(name):
+    """拒绝绝对路径 / 目录穿越 / 盘符，返回安全相对路径"""
+    name = (name or "").replace("\\", "/")
+    if not name or name.startswith("/") or ":" in name.split("/")[0]:
+        return None
+    parts = [p for p in name.split("/") if p not in ("", ".")]
+    if not parts or any(p == ".." for p in parts):
+        return None
+    return "/".join(parts)
+
+
+def _zip_read_manifest(zf):
+    names = [n for n in zf.namelist() if not n.endswith("/")]
+    for want in UPDATE_MANIFEST_NAMES:
+        for n in names:
+            if n == want or n.endswith("/" + want):
+                try:
+                    return json.loads(zf.read(n).decode("utf-8-sig"))
+                except Exception:
+                    return None
+    return None
+
+
+def _zip_find_payload(zf, wanted):
+    base = os.path.basename(str(wanted or ""))
+    for n in zf.namelist():
+        if n.endswith("/"):
+            continue
+        if os.path.basename(n) == base:
+            safe = _safe_member(n)
+            if safe:
+                return safe
+    return None
+
+
+def _is_writable_dir(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, ".pcm_write_test")
+        with open(probe, "w") as f:
+            f.write("x")
+        os.remove(probe)
+        return True
+    except Exception:
+        return False
+
+
+async def update_info(request):
+    """当前版本 + 待应用更新（token 校验）"""
+    if not check_token(request):
+        return web.Response(status=401, text="unauthorized")
+    pending = _read_pending_update()
+    if pending:
+        pending = {k: pending.get(k) for k in
+                   ("version", "file", "sha256", "size", "notes", "uploaded_at",
+                    "has_payload", "static_files")}
+    return web.json_response({
+        "version": APP_VERSION,
+        "mode": _runtime_mode(),
+        "exe": os.path.abspath(sys.executable) if FROZEN else os.path.abspath(__file__),
+        "can_update": _is_writable_dir(BASE_DIR),
+        "pending": pending,
+    })
+
+
+async def upload_update(request):
+    """接收更新包（zip：update-manifest.json + exe/py，可选 static/）"""
+    if not check_token(request):
+        return web.Response(status=401, text="unauthorized")
+    try:
+        form = await request.post()
+    except Exception as e:
+        return web.json_response({"error": "上传解析失败: %s" % e}, status=400)
+    f = form.get("file")
+    if f is None or not getattr(f, "filename", ""):
+        return web.json_response({"error": "没有收到更新包"}, status=400)
+    try:
+        raw = f.file.read()
+    except Exception as e:
+        return web.json_response({"error": "读取上传内容失败: %s" % e}, status=400)
+    if not raw:
+        return web.json_response({"error": "更新包是空的"}, status=400)
+    if len(raw) > UPDATE_MAX_BYTES:
+        return web.json_response({"error": "更新包太大（最大 %d MB）" % (UPDATE_MAX_BYTES // 1048576)},
+                                 status=413)
+    if not raw.startswith(b"PK"):
+        return web.json_response({"error": "更新包必须是 zip 文件（从 Releases 下载的 zip）"}, status=400)
+
+    os.makedirs(UPDATES_DIR, exist_ok=True)
+    tmp_zip = os.path.join(UPDATES_DIR, "upload-tmp.zip")
+    with open(tmp_zip, "wb") as fp:
+        fp.write(raw)
+    try:
+        with zipfile.ZipFile(tmp_zip) as zf:
+            manifest = _zip_read_manifest(zf)
+            if not isinstance(manifest, dict) or not manifest.get("version"):
+                return web.json_response(
+                    {"error": "更新包里缺少 update-manifest.json（或没有 version）"}, status=400)
+            version = str(manifest.get("version"))[:64]
+            wanted = str(manifest.get("file") or "")
+            payload_name = _zip_find_payload(zf, wanted) if wanted else None
+            if wanted and not payload_name:
+                return web.json_response(
+                    {"error": "更新包里找不到清单指定的文件：%s" % wanted}, status=400)
+            payload_ext = os.path.splitext(payload_name)[1].lower() if payload_name else ""
+            if payload_name and payload_ext not in UPDATE_PAYLOAD_EXTS:
+                return web.json_response({"error": "更新包里的程序文件类型不支持：%s" % payload_ext},
+                                         status=400)
+            if payload_name and _runtime_mode() == "exe" and payload_ext != ".exe":
+                return web.json_response(
+                    {"error": "当前是 exe 版，请上传包含 phone-pc-monitor.exe 的更新包"}, status=400)
+            if payload_name and _runtime_mode() == "source" and payload_ext != ".py":
+                return web.json_response(
+                    {"error": "当前是源码版，请上传包含 monitor-lan.py 的更新包"}, status=400)
+
+            _clear_pending_update()
+            payload_size = 0
+            has_payload = False
+            if payload_name:
+                out = os.path.join(UPDATES_DIR, "payload.bin")
+                with zf.open(payload_name) as src, open(out, "wb") as dst:
+                    while True:
+                        chunk = src.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+                        payload_size += len(chunk)
+                has_payload = True
+                log.info("更新包已接收：%s → payload.bin（%.1f MB）", payload_name, payload_size / 1048576)
+
+            # 静态页面（有就热替换，不用改 exe）
+            static_files = []
+            for n in zf.namelist():
+                if n.endswith("/") or not n.startswith("static/"):
+                    continue
+                rel = _safe_member(n[len("static/"):])
+                if not rel or os.path.splitext(rel)[1].lower() not in UPDATE_STATIC_EXTS:
+                    continue
+                dst = os.path.join(UPDATES_DIR, "static", rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with zf.open(n) as src, open(dst, "wb") as out:
+                    out.write(src.read())
+                static_files.append(rel)
+
+            digest = _sha256_file(os.path.join(UPDATES_DIR, "payload.bin")) if has_payload else ""
+            want_hash = str(manifest.get("sha256") or "").strip().lower()
+            if has_payload and want_hash and digest != want_hash:
+                _clear_pending_update()
+                return web.json_response(
+                    {"error": "更新包校验失败：sha256 不一致（文件可能下载不完整）", "expect": want_hash,
+                     "actual": digest}, status=400)
+
+            info = {
+                "version": version,
+                "notes": str(manifest.get("notes") or "")[:500],
+                "file": payload_name or "",
+                "sha256": digest or want_hash,
+                "size": payload_size,
+                "has_payload": has_payload,
+                "static_files": static_files,
+                "uploaded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            _write_pending_update(info)
+            log.info("更新包已就绪：版本 %s（程序 %s，静态文件 %d 个）",
+                     version, has_payload, len(static_files))
+            return web.json_response({"ok": True, "pending": info, "current_version": APP_VERSION})
+    except zipfile.BadZipFile:
+        return web.json_response({"error": "zip 文件损坏"}, status=400)
+    except Exception as e:
+        log.error("处理更新包失败: %s", e)
+        return web.json_response({"error": "处理更新包失败: %s" % e}, status=500)
+    finally:
+        try:
+            os.remove(tmp_zip)
+        except Exception:
+            pass
+
+
+def _restart_after_update():
+    """响应发出后重启：exe 用 PowerShell 脚本等本进程退出再替换并拉起；源码版直接重载自己"""
+    if FROZEN:
+        target = os.path.abspath(sys.executable)
+        payload = os.path.join(UPDATES_DIR, "payload.bin")
+        ps1 = os.path.join(UPDATES_DIR, "apply-update.ps1")
+        contents = """$ErrorActionPreference = 'SilentlyContinue'
+$pidToWait = %d
+$target = '%s'
+$payload = '%s'
+for ($i = 0; $i -lt 240; $i++) {
+  if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) { break }
+  Start-Sleep -Milliseconds 500
+}
+for ($i = 0; $i -lt 15; $i++) {
+  try {
+    Copy-Item -LiteralPath $payload -Destination $target -Force -ErrorAction Stop
+    break
+  } catch { Start-Sleep -Seconds 1 }
+}
+Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target)
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+""" % (os.getpid(), target.replace("'", "''"), payload.replace("'", "''"))
+        with open(ps1, "w", encoding="utf-8-sig") as f:
+            f.write(contents)
+        flags = 0x08000000 if sys.platform == "win32" else 0   # CREATE_NO_WINDOW
+        log.info("热更新：等待进程退出后替换 %s", target)
+        subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                          "-WindowStyle", "Hidden", "-File", ps1],
+                         creationflags=flags, close_fds=True)
+        # 给响应一点时间写回浏览器，然后退出；PowerShell 会等本进程消失后替换并重新拉起
+        time.sleep(0.5)
+        log.info("热更新：退出旧进程，交给更新脚本替换文件")
+        os._exit(0)
+    else:
+        log.info("热更新：重新加载源码")
+        time.sleep(0.2)
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + sys.argv[1:])
+
+
+async def apply_update(request):
+    """应用已上传的更新包（先热替换页面；有程序文件则重启）"""
+    if not check_token(request):
+        return web.Response(status=401, text="unauthorized")
+    pending = _read_pending_update()
+    if not pending:
+        return web.json_response({"error": "没有待应用的更新包，请先上传"}, status=400)
+
+    applied_static = []
+    static_root = os.path.join(UPDATES_DIR, "static")
+    for rel in pending.get("static_files") or []:
+        src = os.path.join(static_root, rel)
+        if not os.path.isfile(src):
+            continue
+        dst = os.path.join(STATIC_OVERRIDE_DIR, rel)
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+            applied_static.append(rel)
+        except Exception as e:
+            log.error("热更新页面文件失败 %s: %s", rel, e)
+    if applied_static:
+        log.info("热更新：页面文件已替换 %s", applied_static)
+
+    restart = False
+    keep_payload = False
+    if pending.get("has_payload"):
+        payload = os.path.join(UPDATES_DIR, "payload.bin")
+        if not os.path.isfile(payload):
+            return web.json_response({"error": "更新文件丢失，请重新上传"}, status=400)
+        digest = _sha256_file(payload)
+        if pending.get("sha256") and digest != pending["sha256"]:
+            return web.json_response({"error": "校验失败：更新文件被改动，请重新上传"}, status=400)
+        if not (os.environ.get("PCM_NO_RESTART") == "1"):
+            if FROZEN:
+                if not _is_writable_dir(os.path.dirname(os.path.abspath(sys.executable))):
+                    return web.json_response(
+                        {"error": "程序目录没有写权限，无法自动替换；请把程序放到可写目录或用管理员运行"},
+                        status=400)
+                keep_payload = True     # 重启脚本要等进程退出后再用这个文件
+            else:
+                # 源码模式：先就地替换当前脚本，再重启进程
+                try:
+                    shutil.copyfile(payload, os.path.abspath(__file__))
+                except Exception as e:
+                    return web.json_response({"error": "替换源码失败: %s" % e}, status=500)
+            restart = True
+            asyncio.get_running_loop().call_later(0.8, _restart_after_update)
+            log.info("热更新：版本 %s 即将重启生效", pending.get("version"))
+        else:
+            log.warning("PCM_NO_RESTART=1：只做校验，不真正重启")
+    elif not applied_static:
+        return web.json_response({"error": "更新包里没有可应用的内容"}, status=400)
+
+    _clear_pending_update(keep_payload=keep_payload)
+    return web.json_response({
+        "ok": True,
+        "version": pending.get("version"),
+        "static": applied_static,
+        "restart": restart,
+        "message": ("正在重启并应用更新，几秒后手机会自动重连" if restart else "页面已更新，刷新即可"),
+    })
+
+
+async def discard_update(request):
+    if not check_token(request):
+        return web.Response(status=401, text="unauthorized")
+    _clear_pending_update()
+    return web.json_response({"ok": True})
+
+
 async def main():
     enable_dpi_awareness()
+    _cleanup_updates_on_start()
 
-    app = web.Application(client_max_size=64 * 1024 * 1024)
+    app = web.Application(client_max_size=UPDATE_MAX_BYTES + 8 * 1024 * 1024)
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)
     app.router.add_get("/health", health)
@@ -2358,6 +2722,10 @@ async def main():
     app.router.add_get("/proof_file", proof_file)
     app.router.add_post("/upload_audio", upload_audio)
     app.router.add_get("/audio_list", audio_list)
+    app.router.add_get("/version", update_info)
+    app.router.add_post("/upload_update", upload_update)
+    app.router.add_post("/apply_update", apply_update)
+    app.router.add_post("/discard_update", discard_update)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -2369,7 +2737,8 @@ async def main():
         await runner.cleanup()
         raise SystemExit(1)
 
-    log.info("服务已启动: 监听 %s:%s", CONFIG["host"], CONFIG["port"])
+    log.info("服务已启动: 监听 %s:%s（版本 %s，%s 模式）", CONFIG["host"], CONFIG["port"],
+             APP_VERSION, _runtime_mode())
     if NO_AGENT:
         log.warning("--no-agent：只提供中继服务器，不采集本机画面")
 
