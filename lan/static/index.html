@@ -174,7 +174,7 @@
   #land-exit { position: fixed; z-index: 120; right: calc(10px + env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top));
     padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line2); background: rgba(11,17,32,.85);
     color: var(--txt); font-size: 12px; font-weight: 650; backdrop-filter: blur(14px); }
-  body.landscape #topbar, body.landscape #tabbar { display: none; }
+  body.landscape #topbar, body.landscape #tabbar, body.landscape #devices { display: none; }
   body.landscape { background: #000; }
   body.landscape #views { padding: 0; }
   body.landscape .view { padding: 0; }
@@ -1369,6 +1369,7 @@
   }, 5000);
 
   showView('view-screen');
+  loadVersion();
   connect();
 })();
 </script>
