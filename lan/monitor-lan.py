@@ -74,7 +74,7 @@ ACCESS_FILE = os.path.join(BASE_DIR, "访问地址.txt")
 LOG_FILE = os.path.join(BASE_DIR, "monitor-lan.log")
 UPDATES_DIR = os.path.join(BASE_DIR, "updates")
 STATIC_OVERRIDE_DIR = os.path.join(BASE_DIR, "static")   # 热更新后的页面放这里，优先于 exe 内置页面
-APP_VERSION = "3.7"
+APP_VERSION = "3.8"
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_PAYLOAD_EXTS = (".exe", ".py")
 UPDATE_STATIC_EXTS = (".html", ".js", ".css", ".svg", ".png", ".ico", ".woff2", ".json", ".txt")
@@ -519,7 +519,8 @@ async def agent_loop(link):
                         await recompute_streams()
                 elif name is not None and t in (
                         "stats", "motion", "dir_list", "file_data", "chat",
-                        "process_list", "toast", "audio_state"):
+                        "process_list", "toast", "audio_state", "camera_probe",
+                        "input_lock_state"):
                     if t == "audio_state":
                         hub.audio_state[name] = data
                     dropped = False
@@ -652,7 +653,8 @@ async def viewer_session(request, ws):
                            "kill_process", "proof_interval", "tts", "popup",
                            "alarm", "draw", "draw_clear", "audio_play", "audio_pause",
                            "audio_resume", "audio_stop", "audio_volume", "audio_loop",
-                           "audio_force_stop"):
+                           "audio_force_stop", "camera_probe", "input_lock",
+                           "input_lock_query"):
                     choice = hub.viewer_choice.get(ws)
                     if choice not in hub.agents and hub.agents:
                         choice = list(hub.agents)[0]
@@ -791,8 +793,27 @@ class Camera:
         self.fail_reason = ""
 
     def _open(self):
-        cv2 = self.cv2
         idx = int(CFG.get("camera_index", 0))
+        if idx < 0:                       # -1 = 自动扫描
+            for candidate in range(0, 5):
+                if self._open_index(candidate):
+                    CFG["_camera_index_used"] = candidate
+                    return True
+            return False
+        if self._open_index(idx):
+            CFG["_camera_index_used"] = idx
+            return True
+        # 配置的编号不行就自动试其他编号（不少笔记本内置摄像头是 1 而不是 0）
+        for candidate in range(0, 5):
+            if candidate == idx:
+                continue
+            if self._open_index(candidate):
+                CFG["_camera_index_used"] = candidate
+                return True
+        return False
+
+    def _open_index(self, idx):
+        cv2 = self.cv2
         # Windows 下默认 MSMF 经常打不开或初始化很慢，优先 DirectShow
         if sys.platform == "win32":
             backends = [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("默认", cv2.CAP_ANY)]
@@ -1586,6 +1607,162 @@ def set_clipboard(text):
     _post(work)
 
 
+# ---------- 输入锁：屏蔽物理鼠标/键盘，远程控制（注入事件）仍然有效 ----------
+
+_input_lock = {"on": False, "thread": None, "thread_id": 0, "timer": None, "state": None}
+
+
+def _input_lock_on():
+    if sys.platform != "win32":
+        log.warning("输入锁仅支持 Windows")
+        return False
+    if _input_lock["on"]:
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        WH_KEYBOARD_LL, WH_MOUSE_LL = 13, 14
+        LLKHF_INJECTED, LLMHF_INJECTED = 0x10, 0x01
+        LRESULT = ctypes.c_ssize_t
+        HOOKPROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+
+        class KBDLLHOOKSTRUCT(ctypes.Structure):
+            _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD),
+                        ("flags", wintypes.DWORD), ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ctypes.c_void_p)]
+
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+        class MSLLHOOKSTRUCT(ctypes.Structure):
+            _fields_ = [("pt", POINT), ("mouseData", wintypes.DWORD),
+                        ("flags", wintypes.DWORD), ("time", wintypes.DWORD),
+                        ("dwExtraInfo", ctypes.c_void_p)]
+
+        def kb_proc(nCode, wParam, lParam):
+            if nCode == 0:
+                try:
+                    kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
+                    if not (kb.flags & LLKHF_INJECTED):
+                        return 1          # 物理键盘：吞掉
+                except Exception:
+                    pass
+            return user32.CallNextHookEx(None, nCode, wParam, lParam)
+
+        def ms_proc(nCode, wParam, lParam):
+            if nCode == 0:
+                try:
+                    ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                    if not (ms.flags & LLMHF_INJECTED):
+                        return 1          # 物理鼠标：吞掉
+                except Exception:
+                    pass
+            return user32.CallNextHookEx(None, nCode, wParam, lParam)
+
+        kb_cb = HOOKPROC(kb_proc)
+        ms_cb = HOOKPROC(ms_proc)
+        hk = user32.SetWindowsHookExW(WH_KEYBOARD_LL, kb_cb, None, 0)
+        hm = user32.SetWindowsHookExW(WH_MOUSE_LL, ms_cb, None, 0)
+        if not hk or not hm:
+            log.error("安装输入钩子失败（错误码 %s）", kernel32.GetLastError())
+            if hk:
+                user32.UnhookWindowsHookEx(hk)
+            if hm:
+                user32.UnhookWindowsHookEx(hm)
+            return False
+        st = {"hooks": (hk, hm), "cbs": (kb_cb, ms_cb)}
+        _input_lock["state"] = st
+
+        def loop():
+            _input_lock["thread_id"] = kernel32.GetCurrentThreadId()
+            msg = wintypes.MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                user32.TranslateMessage(ctypes.byref(msg))
+                user32.DispatchMessageW(ctypes.byref(msg))
+            user32.UnhookWindowsHookEx(hk)
+            user32.UnhookWindowsHookEx(hm)
+            log.info("输入钩子已卸载")
+
+        t = threading.Thread(target=loop, daemon=True, name="pcm-input-lock")
+        t.start()
+        timer = threading.Timer(600, lambda: _input_lock_off(auto=True))
+        timer.daemon = True
+        timer.start()
+        _input_lock.update(on=True, thread=t, timer=timer)
+        log.info("已屏蔽外部鼠标/键盘（手机远程控制不受影响；10 分钟自动解除）")
+        return True
+    except Exception as e:
+        log.error("启用输入锁失败: %s", e)
+        return False
+
+
+def _input_lock_off(auto=False):
+    tid = _input_lock.get("thread_id")
+    if sys.platform == "win32" and tid:
+        try:
+            import ctypes
+            ctypes.windll.user32.PostThreadMessageW(tid, 0x0012, 0, 0)   # WM_QUIT
+        except Exception:
+            pass
+    timer = _input_lock.get("timer")
+    if timer is not None:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
+    was = _input_lock["on"]
+    _input_lock.update(on=False, thread=None, thread_id=0, timer=None)
+    if was:
+        log.info("已解除输入屏蔽%s", "（超时自动）" if auto else "")
+    return True
+
+
+def _input_lock_state():
+    return {"type": "input_lock_state", "on": bool(_input_lock["on"]), "auto_unlock_sec": 600}
+
+
+# ---------- 摄像头诊断 ----------
+
+def camera_probe():
+    """返回一份摄像头检测报告，方便定位打不开的原因"""
+    report = {"platform": sys.platform, "cv2": None, "count": 0, "results": [], "hint": ""}
+    try:
+        import cv2
+        report["cv2"] = cv2.__version__
+    except Exception as e:
+        report["error"] = "OpenCV 不可用: %s" % e
+        report["hint"] = "更新到最新 exe（内置摄像头组件），或手动 pip install opencv-python-headless"
+        return report
+    try:
+        import cv2
+        backends = [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("ANY", cv2.CAP_ANY)]
+        for idx in range(0, 4):
+            for label, be in backends:
+                try:
+                    cap = cv2.VideoCapture(idx, be)
+                    opened = bool(cap and cap.isOpened())
+                    ok = False
+                    if opened:
+                        ok, _frame = cap.read()
+                    cap.release() if cap else None
+                    report["results"].append({"index": idx, "backend": label, "opened": opened, "read": bool(ok)})
+                    if ok:
+                        report["count"] += 1
+                        report["hint"] = "摄像头可用：编号 %d（把 config.json 的 camera_index 设为 %d）" % (idx, idx)
+                        return report
+                except Exception as e:
+                    report["results"].append({"index": idx, "backend": label, "error": str(e)[:120]})
+    except Exception as e:
+        report["error"] = str(e)
+    if not report["hint"]:
+        report["hint"] = ("没有可用摄像头。检查：1) Windows 设置 → 隐私和安全性 → 相机 → "
+                          "允许桌面应用访问相机；2) 关掉微信/QQ/相机等占用摄像头的程序；"
+                          "3) 设备管理器里摄像头是否正常；4) 台式机外接摄像头换个 USB 口")
+    return report
+
+
 # ---------- 喊话 / 放音（Windows MCI，支持播放/暂停/继续/停止/音量/循环） ----------
 
 _audio_alias = "pcm_audio"
@@ -1937,6 +2114,20 @@ async def dispatch(link, state, screen_grab, cam, data):
     elif t == "audio_force_stop":
         await run_blocking(audio_force_stop)
         await _send_audio_state(link)
+    elif t == "input_lock":
+        on = bool(data.get("on", False))
+        if on:
+            await run_blocking(_input_lock_on)
+        else:
+            await run_blocking(_input_lock_off)
+        await link_send(link, _input_lock_state())
+    elif t == "input_lock_query":
+        await link_send(link, _input_lock_state())
+    elif t == "camera_probe":
+        await link_send(link, {"type": "toast", "text": "正在检测摄像头…"})
+        report = await run_blocking(camera_probe)
+        log.info("摄像头检测结果: %s", report.get("hint", report))
+        await link_send(link, {"type": "camera_probe", "report": report})
     elif t == "popup":
         do_popup(data.get("text", ""), data.get("duration", 5))
     elif t == "alarm":
@@ -2512,11 +2703,12 @@ def _write_pending_update(data):
     os.replace(tmp, os.path.join(UPDATES_DIR, "pending.json"))
 
 
-def _clear_pending_update(keep_payload=False):
-    try:
-        shutil.rmtree(os.path.join(UPDATES_DIR, "static"), ignore_errors=True)
-    except Exception:
-        pass
+def _clear_pending_update(keep_payload=False, keep_static=False):
+    if not keep_static:
+        try:
+            shutil.rmtree(os.path.join(UPDATES_DIR, "static"), ignore_errors=True)
+        except Exception:
+            pass
     names = ["pending.json", "payload.tmp"]
     if not keep_payload:
         names.append("payload.bin")
@@ -2531,6 +2723,7 @@ def _cleanup_updates_on_start():
     """启动时清掉上次没被用掉的更新文件（重启脚本已经用完）"""
     try:
         if not os.path.isfile(os.path.join(UPDATES_DIR, "pending.json")):
+            shutil.rmtree(os.path.join(UPDATES_DIR, "static"), ignore_errors=True)
             for name in ("payload.bin", "upload-tmp.zip"):
                 p = os.path.join(UPDATES_DIR, name)
                 if os.path.isfile(p):
@@ -2734,12 +2927,17 @@ $target = '%s'
 $payload = '%s'
 $backup = '%s'
 $port = %d
+$updatesDir = Split-Path -Parent $logPath
+$staticSrc = Join-Path $updatesDir 'static'
+$baseDir = Split-Path -Parent $target
 Log ('update start; waiting pid ' + $pidToWait)
 for ($i = 0; $i -lt 240; $i++) {
   if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) { break }
   Start-Sleep -Milliseconds 500
 }
 Log 'old process gone'
+Get-Process | Where-Object { $_.Path -eq $target } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
 if (Test-Path -LiteralPath $target) {
   for ($i = 0; $i -lt 5; $i++) {
     try { Copy-Item -LiteralPath $target -Destination $backup -Force -ErrorAction Stop; break }
@@ -2764,6 +2962,14 @@ if (-not $ok) {
   Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target)
   Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
   exit 1
+}
+if (Test-Path -LiteralPath $staticSrc) {
+  try {
+    New-Item -ItemType Directory -Force -Path (Join-Path $baseDir 'static') | Out-Null
+    Copy-Item -Path (Join-Path $staticSrc '*') -Destination (Join-Path $baseDir 'static') -Recurse -Force -ErrorAction Stop
+    Log 'static files copied'
+  } catch { Log ('static copy failed: ' + $_.Exception.Message) }
+  Remove-Item -LiteralPath $staticSrc -Recurse -Force -ErrorAction SilentlyContinue
 }
 Log 'copied and verified; starting new version'
 Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target)
@@ -2815,20 +3021,27 @@ async def apply_update(request):
         return web.json_response({"error": "没有待应用的更新包，请先上传"}, status=400)
 
     applied_static = []
+    defer_static = False
     static_root = os.path.join(UPDATES_DIR, "static")
-    for rel in pending.get("static_files") or []:
-        src = os.path.join(static_root, rel)
-        if not os.path.isfile(src):
-            continue
-        dst = os.path.join(STATIC_OVERRIDE_DIR, rel)
-        try:
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copyfile(src, dst)
-            applied_static.append(rel)
-        except Exception as e:
-            log.error("热更新页面文件失败 %s: %s", rel, e)
-    if applied_static:
-        log.info("热更新：页面文件已替换 %s", applied_static)
+    if pending.get("has_payload") and FROZEN and not (os.environ.get("PCM_NO_RESTART") == "1"):
+        # exe 升级：先别动正在运行的页面文件，等更新脚本在退出后一起拷贝
+        defer_static = bool(pending.get("static_files"))
+        if defer_static:
+            log.info("热更新：页面文件将在重启后应用（%d 个）", len(pending["static_files"]))
+    else:
+        for rel in pending.get("static_files") or []:
+            src = os.path.join(static_root, rel)
+            if not os.path.isfile(src):
+                continue
+            dst = os.path.join(STATIC_OVERRIDE_DIR, rel)
+            try:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copyfile(src, dst)
+                applied_static.append(rel)
+            except Exception as e:
+                log.error("热更新页面文件失败 %s: %s", rel, e)
+        if applied_static:
+            log.info("热更新：页面文件已替换 %s", applied_static)
 
     restart = False
     keep_payload = False
@@ -2860,7 +3073,7 @@ async def apply_update(request):
     elif not applied_static:
         return web.json_response({"error": "更新包里没有可应用的内容"}, status=400)
 
-    _clear_pending_update(keep_payload=keep_payload)
+    _clear_pending_update(keep_payload=keep_payload, keep_static=defer_static)
     return web.json_response({
         "ok": True,
         "version": pending.get("version"),
@@ -2877,8 +3090,30 @@ async def discard_update(request):
     return web.json_response({"ok": True})
 
 
+_instance_mutex = None
+
+
+def acquire_single_instance():
+    """Windows 下用命名互斥量判断是否已有实例；重复启动静默退出，不弹任何窗"""
+    global _instance_mutex
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        _instance_mutex = kernel32.CreateMutexW(None, False, "PhonePCMonitor_SingleInstance")
+        if kernel32.GetLastError() == 183:      # ERROR_ALREADY_EXISTS
+            log.warning("检测到已有实例在运行，本次启动直接退出（不弹窗）")
+            return False
+    except Exception as e:
+        log.warning("单实例检测失败（忽略）: %s", e)
+    return True
+
+
 async def main():
     enable_dpi_awareness()
+    if not acquire_single_instance():
+        os._exit(0)
     _cleanup_updates_on_start()
     _kill_orphan_tts()
 
@@ -2915,9 +3150,9 @@ async def main():
     try:
         await site.start()
     except OSError as e:
-        log.error("端口 %s 启动失败（可能被占用或没权限）: %s", CONFIG["port"], e)
+        log.warning("端口 %s 被占用（可能已有实例在运行），本次启动退出: %s", CONFIG["port"], e)
         await runner.cleanup()
-        raise SystemExit(1)
+        os._exit(0)
 
     log.info("服务已启动: 监听 %s:%s（版本 %s，%s 模式）", CONFIG["host"], CONFIG["port"],
              APP_VERSION, _runtime_mode())

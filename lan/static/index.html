@@ -381,6 +381,19 @@
       <div class="row"><button id="act-list" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>浏览目录</button></div>
       <div id="file-list" class="list-box"></div>
     </div><div class="section">
+      <div class="section-title">输入锁（屏蔽本机鼠标键盘）</div>
+      <div class="label" id="input-lock-state">未开启</div>
+      <div class="row"><button id="input-lock-btn" class="base danger">屏蔽外置键鼠</button></div>
+      <div class="label" style="font-size:11px;color:var(--dim);line-height:1.6">开启后电脑本机鼠标键盘暂时失效，手机远程控制仍然可用；10 分钟后自动解除，避免手机掉线后锁死。</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">摄像头检测</div>
+      <div class="row"><button id="cam-probe-btn" class="base">检测摄像头</button></div>
+      <div class="label" id="cam-probe-result" style="font-size:11px;color:var(--dim);line-height:1.6"></div>
+    </div>
+
+    <div class="section">
       <div class="section-title">壁纸与聊天</div>
       <input type="file" id="wp-file" accept="image/*" style="font-size:12px;color:var(--text2);margin-bottom:8px;">
       <div class="row">
@@ -582,6 +595,20 @@
         else if (m.type === 'file_data') downloadFile(m);
         else if (m.type === 'process_list') renderProcs(m);
         else if (m.type === 'audio_state') { audioState = m; updateAudioUI(); }
+        else if (m.type === 'camera_probe') {
+          var r = m.report || {};
+          var lines = [];
+          if (r.hint) lines.push(r.hint);
+          if (r.cv2) lines.push('OpenCV ' + r.cv2);
+          if (typeof r.count === 'number') lines.push('可用摄像头：' + r.count + ' 个');
+          $('cam-probe-result').textContent = lines.join(' · ');
+          toast(r.hint || '摄像头检测完成');
+        }
+        else if (m.type === 'input_lock_state') {
+          inputLockOn = !!m.on;
+          updateInputLockUI();
+          if (!inputLockOn) toast('输入锁已解除');
+        }
         else if (m.type === 'pong') {
           var rtt = Date.now() - m.ts;
           $('st-ping').textContent = (rtt >= 0 ? rtt : 0) + 'ms';
@@ -649,6 +676,7 @@
       $('https-hint').textContent = window.isSecureContext ? ''
         : '按住说话需要 HTTPS：把 config.json 里的 "https" 改成 true 后重启，手机首次打开点「高级 → 继续前往」。';
     }
+    if (id === 'view-system') send({type: 'input_lock_query'});
     if (id === 'view-update') loadVersion();
   }
   document.querySelectorAll('.tab').forEach(function (b) {
@@ -1028,6 +1056,26 @@
     lastResyncAt = Date.now();
     send({type:'resync'});
     toast('已请求重新拉画面');
+  };
+
+  // ---------- 输入锁 / 摄像头检测 ----------
+  var inputLockOn = false;
+  function updateInputLockUI() {
+    $('input-lock-state').textContent = inputLockOn
+      ? '已开启：电脑本机鼠标键盘被屏蔽（手机仍可控）'
+      : '未开启';
+    $('input-lock-btn').textContent = inputLockOn ? '解除屏蔽' : '屏蔽外置键鼠';
+    $('input-lock-btn').className = 'base ' + (inputLockOn ? 'primary' : 'danger');
+  }
+  $('input-lock-btn').onclick = function () {
+    if (!inputLockOn && !confirm('开启后电脑本机的鼠标键盘会失效，只能从手机控制（10 分钟后自动解除）。确定开启？')) return;
+    send({type: 'input_lock', on: !inputLockOn});
+    toast(inputLockOn ? '正在解除输入锁…' : '正在开启输入锁…');
+  };
+  $('cam-probe-btn').onclick = function () {
+    $('cam-probe-result').textContent = '检测中…';
+    send({type: 'camera_probe'});
+    toast('正在检测摄像头，结果会显示在这里');
   };
 
   // ---------- 系统更新（热更新） ----------
