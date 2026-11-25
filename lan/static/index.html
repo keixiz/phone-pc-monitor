@@ -216,32 +216,85 @@
     .sheet { bottom: 50%; transform: translate(-50%, 50%); animation: popIn .25s ease-out; }
     @keyframes popIn { from { opacity: 0; transform: translate(-50%, 50%) scale(.97); } to { opacity: 1; transform: translate(-50%, 50%) scale(1); } }
   }
+
+  /* ===== v3.5 新布局：标签分组 / 横屏 ===== */
+  .sheet-tabs { display: flex; gap: 6px; margin: -6px 0 14px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .sheet-tabs::-webkit-scrollbar { display: none; }
+  .sheet-tab { flex: 0 0 auto; border: 1px solid var(--border); background: var(--glass);
+    color: var(--text2); border-radius: 999px; padding: 8px 14px; font-size: 12.5px; font-weight: 600;
+    transition: all .18s; }
+  .sheet-tab.active { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
+    border-color: transparent; box-shadow: 0 4px 16px rgba(109,141,255,.35); }
+  .sheet-body { min-height: 120px; }
+  .tab-pane.hidden { display: none; }
+  .tab-pane > .section:last-child { margin-bottom: 4px; }
+  .sheet-foot { margin-top: 12px; }
+  .sheet-foot .base { width: 100%; justify-content: center; }
+  #stage .screen-wrap { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  #land-exit { position: fixed; z-index: 70; right: calc(12px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top));
+    align-items: center; gap: 6px; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--border2);
+    background: rgba(13,17,30,.82); color: var(--text); font-size: 12.5px; font-weight: 600;
+    backdrop-filter: blur(14px); box-shadow: var(--shadow); }
+  #land-exit:not(.hidden) { display: flex; }
+  #btn-land.on { color: var(--acc); border-color: rgba(109,141,255,.6); }
+  body.landscape #topbar,
+  body.landscape #stats,
+  body.landscape #devices { display: none; }
+  body.landscape { background: #000; }
+  body.landscape #stage { padding: 0; flex: 1; }
+  body.landscape #stage .screen-wrap { border-radius: 0; }
+  body.landscape #screen { border-radius: 0; }
+  body.landscape #bar { position: fixed; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom));
+    transform: translateX(-50%); width: min(680px, calc(100vw - 24px)); z-index: 20; }
+  body.landscape #more-panel { left: auto; right: calc(10px + env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top));
+    bottom: calc(10px + env(safe-area-inset-bottom)); transform: none; width: min(560px, 58vw); max-height: none;
+    animation: none; }
+  body.landscape #chat-panel, body.landscape #ov-panel { left: auto; right: calc(10px + env(safe-area-inset-right)); transform: none; width: min(560px, 58vw); }
+  @media (orientation: landscape) {
+    #bar button.base { min-height: 40px; }
+  }
+  @media (max-width: 380px) {
+    .brand small { display: none; }
+  }
+
+  /* ===== v3.5.1 布局修正 ===== */
+  html, body { height: 100dvh; }
+  #bar { grid-template-columns: repeat(4, 1fr); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  #stats { align-items: center; padding-top: 2px; }
+  .stat { white-space: nowrap; font-size: 12px; }
+  .brand b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand > div:last-child { min-width: 0; }
+  .tb-right { gap: 7px; }
+  #conn { padding: 5px 10px; font-size: 11.5px; white-space: nowrap; }
+  #stage { min-height: 120px; margin-bottom: 6px; }
+  @media (max-width: 400px) {
+    #conn #status { display: none; }
+    #conn { padding: 8px 10px; }
+  }
+  @media (orientation: landscape) {
+    #bar { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  }
 </style>
-</head>
+
 <body>
   <!-- ===== 顶栏 ===== -->
   <header id="topbar">
     <div class="tb-row">
       <div class="brand">
-        <div class="logo-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        </div>
-        <div>
-          <b>Monitor Console</b>
-          <small>REMOTE CONTROL</small>
-        </div>
+        <div class="logo-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <div><b>Phone PC Monitor</b><small>局域网 · 实时控制</small></div>
       </div>
       <div class="tb-right">
         <div id="conn"><span id="dot" class="dot"></span><span id="status">连接中…</span></div>
-        <button id="btn-logout" class="icon-btn" title="退出登录" aria-label="退出登录">
-          <svg class="ic-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
+        <button id="btn-full" class="icon-btn" title="全屏" aria-label="全屏"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+        <button id="btn-land" class="icon-btn" title="横屏" aria-label="横屏"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M19 7l2 2-2 2"/><path d="M21 9H16"/></svg></button>
+        <button id="btn-logout" class="icon-btn" title="退出登录" aria-label="退出登录"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
       </div>
     </div>
   </header>
 
   <!-- ===== 状态条 ===== -->
-  <div id="stats">
+<div id="stats">
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>CPU <b id="st-cpu">--</b></span>
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>内存 <b id="st-mem">--</b></span>
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg><b id="st-up">--</b></span>
@@ -250,11 +303,10 @@
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><b id="st-time">--</b></span>
   </div>
 
-  <!-- ===== 设备选择 ===== -->
   <div id="devices"><div class="chip empty">等待设备…</div></div>
 
-  <!-- ===== 画面 ===== -->
-  <div id="stage">
+    <!-- ===== 画面 ===== -->
+<div id="stage">
     <img id="screen" alt="实时画面">
     <button id="touch-toggle">触控</button>
     <div id="fps" class="hidden"><span class="pulse"></span>LIVE</div>
@@ -264,150 +316,42 @@
     </div>
   </div>
 
-  <!-- ===== 底部工具栏 ===== -->
-  <nav id="bar">
+    <!-- ===== 底部工具栏 ===== -->
+<nav id="bar">
     <button id="btn-screen" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>屏幕</button>
     <button id="btn-cam" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></svg>摄像头</button>
-    <button id="btn-full" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>全屏</button>
     <button id="btn-ov" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><line x1="6" y1="9" x2="13" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/></svg>字幕</button>
     <button id="btn-more" class="base"><svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>更多</button>
   </nav>
 
-  <div id="toast"></div>
+    <div id="toast"></div>
+  <button id="land-exit" class="hidden">退出横屏</button>
 
-  <!-- ===== 更多控制面板 ===== -->
+  <!-- ===== 控制台（标签分组） ===== -->
   <div id="more-mask" class="mask hidden"></div>
   <div id="more-panel" class="sheet hidden">
-    <div class="sheet-head"><div class="grip"></div><h3>远程控制</h3><button class="icon-btn" id="more-close" aria-label="关闭"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
-
-    <div class="section">
-      <div class="section-title">系统</div>
-      <div class="row">
-        <button id="act-snap" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截图</button>
-        <button id="act-lock" class="base warn"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>锁屏</button>
-        <button id="act-cancel" class="base"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>取消关机</button>
-      </div>
-      <div class="row">
-        <button id="act-reboot" class="base warn"><svg class="ic" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>重启</button>
-        <button id="act-shutdown" class="base danger"><svg class="ic" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>关机</button>
-        <button id="act-blackout" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>黑屏</button>
-      </div>
+    <div class="sheet-head"><div class="grip"></div><h3>控制台</h3><button class="icon-btn" id="more-close" aria-label="关闭"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="sheet-tabs">
+      <button class="sheet-tab active" data-pane="pane-control">控制</button>
+      <button class="sheet-tab" data-pane="pane-sound">声音</button>
+      <button class="sheet-tab" data-pane="pane-system">系统</button>
+      <button class="sheet-tab" data-pane="pane-files">文件</button>
+      <button class="sheet-tab" data-pane="pane-update">更新</button>
     </div>
-
-    <div class="section">
-      <div class="section-title">输入</div>
-      <input type="text" id="open-target" placeholder="打开网址或路径" />
-      <div class="row"><button id="act-open" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>打开</button></div>
-      <input type="text" id="clip-text" placeholder="复制文字到电脑剪贴板" />
-      <div class="row"><button id="act-clip" class="base primary"><svg class="ic" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>发送到剪贴板</button></div>
+    <div class="sheet-body">
+    <div id="pane-control" class="tab-pane">
+<div class="section">
+      <div class="section-title">画面卡住？</div>
+      <div class="row"><button id="act-resync" class="base">重新拉画面</button></div>
     </div>
-
-    <div class="section">
+<div class="section">
       <div class="section-title">鼠标触控板</div>
       <div id="touchpad">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
         滑动移动 · 单击=左键 · 双击=右键
       </div>
     </div>
-
-    <div class="section">
-      <div class="section-title">语音喊话 (TTS)</div>
-      <input type="text" id="tts-text" placeholder="电脑会念这段话">
-      <div class="row"><button id="tts-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>播放</button></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">喊话 / 放音（上传音频到电脑播放）</div>
-      <input type="file" id="audio-file" accept="audio/*" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
-      <div class="row"><button id="audio-upload" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传并播放</button></div>
-      <div class="row"><button id="talk-btn" class="base primary" style="touch-action:none;user-select:none;-webkit-user-select:none;">按住说话（松开发送到电脑）</button></div>
-      <div class="label" id="https-hint" style="font-size:11px;color:var(--text3);line-height:1.5"></div>
-      <div class="label" id="audio-status">未播放</div>
-      <div class="row">
-        <button id="audio-pause" class="base">暂停</button>
-        <button id="audio-stop" class="base danger">停止</button>
-        <button id="audio-loop" class="base">循环: 关</button>
-        <button id="audio-force-stop" class="base danger">强制停止</button>
-      </div>
-      <div class="label">音量 <span id="audio-vol-val">80</span>%</div>
-      <input type="range" id="audio-vol" min="0" max="100" value="80">
-      <div class="label">已上传（点一下播放）</div>
-      <div id="audio-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">画面卡住？</div>
-      <div class="row"><button id="act-resync" class="base">重新拉画面</button></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">系统更新（热更新）</div>
-      <div class="label" id="ver-line">当前版本：…</div>
-      <input type="file" id="update-file" accept=".zip" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
-      <div class="row"><button id="update-upload" class="base primary">上传更新包</button></div>
-      <div class="label" id="update-status">未选择更新包</div>
-      <div class="row">
-        <button id="update-apply" class="base warn" disabled>应用并重启</button>
-        <button id="update-cancel" class="base" disabled>取消</button>
-      </div>
-      <div class="label" style="font-size:11px;color:var(--text3);line-height:1.5">更新包用 GitHub Releases 里的 phone-pc-monitor-win.zip。上传后会校验 sha256；应用时页面立即生效，程序自动重启（手机断线几秒后自动重连）。</div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">弹窗气泡</div>
-      <input type="text" id="popup-text" placeholder="屏幕角落弹个气泡">
-      <div class="row"><button id="popup-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>弹出</button></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">闹钟提醒</div>
-      <input type="text" id="alarm-text" placeholder="提醒内容，如：该休息了">
-      <div class="row">
-        <button id="alarm-1" class="base">1分钟</button>
-        <button id="alarm-5" class="base">5分钟</button>
-        <button id="alarm-10" class="base">10分钟</button>
-        <button id="alarm-30" class="base">30分钟</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">涂鸦（在屏幕上画）</div>
-      <div class="row">
-        <button id="draw-mode" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>开始画</button>
-        <button id="draw-clear" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>清空</button>
-      </div>
-      <div class="label">颜色</div>
-      <div id="draw-colors" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">音量 / 亮度</div>
-      <div class="row">
-        <button id="vol-up" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/><line x1="19.5" y1="7.5" x2="19.5" y2="12.5"/></svg>音量+</button>
-        <button id="vol-down" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/></svg>音量-</button>
-        <button id="vol-mute" class="base"><svg class="ic" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/></svg>静音</button>
-      </div>
-      <div class="label">亮度 <span id="br-val">70</span>%</div>
-      <input type="range" id="br-slider" min="10" max="100" value="70">
-    </div>
-
-    <div class="section">
-      <div class="section-title">定时截图存证</div>
-      <div class="row">
-        <button id="proof-off" class="base">关闭</button>
-        <button id="proof-5" class="base">5分钟</button>
-        <button id="proof-15" class="base">15分钟</button>
-        <button id="proof-30" class="base">30分钟</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">进程管理</div>
-      <div class="row"><button id="btn-proc" class="base primary"><svg class="ic" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg>刷新进程列表</button></div>
-      <div id="proc-list" class="list-box"></div>
-    </div>
-
-    <div class="section">
+<div class="section">
       <div class="section-title">快捷键</div>
       <div class="row">
         <button id="sc-cc" class="base">Ctrl+C</button>
@@ -425,14 +369,12 @@
         <button id="sc-esc" class="base">Esc</button>
       </div>
     </div>
-
-    <div class="section">
+<div class="section">
       <div class="section-title">远程键盘（打字到电脑）</div>
       <input type="text" id="kb-input" placeholder="在这里打字，实时发送到电脑" autocomplete="off">
       <div class="kb-hint">回车发送 · 退格删除 · 支持特殊键</div>
     </div>
-
-    <div class="section">
+<div class="section">
       <div class="section-title">演示 / PPT</div>
       <div class="row">
         <button id="key-left" class="base primary"><svg class="ic" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>上一页</button>
@@ -443,31 +385,142 @@
         <button id="key-esc" class="base">退出</button>
       </div>
     </div>
-
-    <div class="section">
+<div class="section">
+      <div class="section-title">涂鸦（在屏幕上画）</div>
+      <div class="row">
+        <button id="draw-mode" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>开始画</button>
+        <button id="draw-clear" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>清空</button>
+      </div>
+      <div class="label">颜色</div>
+      <div id="draw-colors" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
+    </div>
+    </div>
+    <div id="pane-sound" class="tab-pane hidden">
+<div class="section">
+      <div class="section-title">语音喊话 (TTS)</div>
+      <input type="text" id="tts-text" placeholder="电脑会念这段话">
+      <div class="row"><button id="tts-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>播放</button></div>
+    </div>
+<div class="section">
+      <div class="section-title">喊话 / 放音（上传音频到电脑播放）</div>
+      <input type="file" id="audio-file" accept="audio/*" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
+      <div class="row"><button id="audio-upload" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传并播放</button></div>
+      <div class="row"><button id="talk-btn" class="base primary" style="touch-action:none;user-select:none;-webkit-user-select:none;">按住说话（松开发送到电脑）</button></div>
+      <div class="label" id="https-hint" style="font-size:11px;color:var(--text3);line-height:1.5"></div>
+      <div class="label" id="audio-status">未播放</div>
+      <div class="row">
+        <button id="audio-pause" class="base">暂停</button>
+        <button id="audio-stop" class="base danger">停止</button>
+        <button id="audio-loop" class="base">循环: 关</button>
+        <button id="audio-force-stop" class="base danger">强制停止</button>
+      </div>
+      <div class="label">音量 <span id="audio-vol-val">80</span>%</div>
+      <input type="range" id="audio-vol" min="0" max="100" value="80">
+      <div class="label">已上传（点一下播放）</div>
+      <div id="audio-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+<div class="section">
+      <div class="section-title">音量 / 亮度</div>
+      <div class="row">
+        <button id="vol-up" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/><line x1="19.5" y1="7.5" x2="19.5" y2="12.5"/></svg>音量+</button>
+        <button id="vol-down" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/></svg>音量-</button>
+        <button id="vol-mute" class="base"><svg class="ic" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/></svg>静音</button>
+      </div>
+      <div class="label">亮度 <span id="br-val">70</span>%</div>
+      <input type="range" id="br-slider" min="10" max="100" value="70">
+    </div>
+<div class="section">
+      <div class="section-title">弹窗气泡</div>
+      <input type="text" id="popup-text" placeholder="屏幕角落弹个气泡">
+      <div class="row"><button id="popup-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>弹出</button></div>
+    </div>
+<div class="section">
+      <div class="section-title">闹钟提醒</div>
+      <input type="text" id="alarm-text" placeholder="提醒内容，如：该休息了">
+      <div class="row">
+        <button id="alarm-1" class="base">1分钟</button>
+        <button id="alarm-5" class="base">5分钟</button>
+        <button id="alarm-10" class="base">10分钟</button>
+        <button id="alarm-30" class="base">30分钟</button>
+      </div>
+    </div>
+    </div>
+    <div id="pane-system" class="tab-pane hidden">
+<div class="section">
+      <div class="section-title">系统</div>
+      <div class="row">
+        <button id="act-snap" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截图</button>
+        <button id="act-lock" class="base warn"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>锁屏</button>
+        <button id="act-cancel" class="base"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>取消关机</button>
+      </div>
+      <div class="row">
+        <button id="act-reboot" class="base warn"><svg class="ic" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>重启</button>
+        <button id="act-shutdown" class="base danger"><svg class="ic" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>关机</button>
+        <button id="act-blackout" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>黑屏</button>
+      </div>
+    </div>
+<div class="section">
+      <div class="section-title">输入</div>
+      <input type="text" id="open-target" placeholder="打开网址或路径" />
+      <div class="row"><button id="act-open" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>打开</button></div>
+      <input type="text" id="clip-text" placeholder="复制文字到电脑剪贴板" />
+      <div class="row"><button id="act-clip" class="base primary"><svg class="ic" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>发送到剪贴板</button></div>
+    </div>
+<div class="section">
+      <div class="section-title">进程管理</div>
+      <div class="row"><button id="btn-proc" class="base primary"><svg class="ic" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg>刷新进程列表</button></div>
+      <div id="proc-list" class="list-box"></div>
+    </div>
+<div class="section">
+      <div class="section-title">定时截图存证</div>
+      <div class="row">
+        <button id="proof-off" class="base">关闭</button>
+        <button id="proof-5" class="base">5分钟</button>
+        <button id="proof-15" class="base">15分钟</button>
+        <button id="proof-30" class="base">30分钟</button>
+      </div>
+    </div>
+<div class="section">
+      <div class="section-title">壁纸 / 聊天</div>
+      <input type="file" id="wp-file" accept="image/*" style="font-size:12px;color:var(--text2);margin-bottom:8px;">
+      <div class="row">
+        <button id="act-chat" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>打开聊天</button>
+        
+      </div>
+    </div>
+    </div>
+    <div id="pane-files" class="tab-pane hidden">
+<div class="section">
       <div class="section-title">文件管理</div>
       <input type="text" id="file-path" placeholder="路径，如 C:\Users\35722\Desktop" />
       <div class="row"><button id="act-list" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>浏览目录</button></div>
       <div id="file-list" class="list-box"></div>
     </div>
-
-    <div class="section">
+<div class="section">
       <div class="section-title">截图存证</div>
       <div class="row"><button id="btn-proof" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截一张存到服务器</button></div>
       <div id="proof-grid"></div>
     </div>
-
-    <div class="section">
-      <div class="section-title">其他</div>
-      <input type="file" id="wp-file" accept="image/*" style="font-size:12px;color:var(--text2);margin-bottom:8px;">
-      <div class="row">
-        <button id="act-chat" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>打开聊天</button>
-        <button id="more-close2" class="base">关闭</button>
-      </div>
     </div>
+    <div id="pane-update" class="tab-pane hidden">
+<div class="section">
+      <div class="section-title">系统更新（热更新）</div>
+      <div class="label" id="ver-line">当前版本：…</div>
+      <input type="file" id="update-file" accept=".zip" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
+      <div class="row"><button id="update-upload" class="base primary">上传更新包</button></div>
+      <div class="label" id="update-status">未选择更新包</div>
+      <div class="row">
+        <button id="update-apply" class="base warn" disabled>应用并重启</button>
+        <button id="update-cancel" class="base" disabled>取消</button>
+      </div>
+      <div class="label" style="font-size:11px;color:var(--text3);line-height:1.5">更新包用 GitHub Releases 里的 phone-pc-monitor-win.zip。上传后会校验 sha256；应用时页面立即生效，程序自动重启（手机断线几秒后自动重连）。</div>
+    </div>
+    </div>
+    </div>
+    <div class="sheet-foot"><button id="more-close2" class="base">关闭</button></div>
   </div>
 
-  <!-- ===== 聊天面板 ===== -->
+<!-- ===== 聊天面板 ===== -->
   <div id="chat-mask" class="mask hidden"></div>
   <div id="chat-panel" class="sheet hidden">
     <div class="sheet-head"><div class="grip"></div><h3>与电脑前的人聊天</h3><button class="icon-btn" id="chat-close" aria-label="关闭"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
@@ -1354,6 +1407,59 @@
       send({type: 'resync'});
     }
   }, 4000);
+
+
+  // ---------- v3.5 标签分组 ----------
+  function switchPane(pid) {
+    document.querySelectorAll('.sheet-tab').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-pane') === pid);
+    });
+    document.querySelectorAll('.tab-pane').forEach(function (p) {
+      p.classList.toggle('hidden', p.id !== pid);
+    });
+    var panel = $('more-panel');
+    if (panel) panel.scrollTop = 0;
+  }
+  document.querySelectorAll('.sheet-tab').forEach(function (b) {
+    b.onclick = function () { switchPane(b.getAttribute('data-pane')); };
+  });
+
+  // ---------- v3.5 横屏全屏 ----------
+  var landMode = false;
+  function setLandMode(on) {
+    landMode = on;
+    document.body.classList.toggle('landscape', on);
+    $('land-exit').classList.toggle('hidden', !on);
+    $('btn-land').classList.toggle('on', on);
+  }
+  function enterLand() {
+    setLandMode(true);
+    try {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(function () {});
+      }
+    } catch (e) {}
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(function () {});
+      }
+    } catch (e) {}
+    toast('横屏模式：把手机横过来，或点右上角「退出横屏」');
+  }
+  function exitLand() {
+    setLandMode(false);
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
+    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function () {}); } catch (e) {}
+  }
+  $('btn-land').onclick = function () { landMode ? exitLand() : enterLand(); };
+  $('land-exit').onclick = exitLand;
+  window.addEventListener('orientationchange', function () {
+    var deg = Math.abs(window.orientation || 0);
+    if (deg === 90) setLandMode(true);
+    else if (!landMode) setLandMode(false);
+  });
+  // 打开控制台时默认落到「控制」标签
+  switchPane('pane-control');
 
   connect();
 })();
