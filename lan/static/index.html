@@ -8,292 +8,205 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070a12'/%3E%3Crect x='10' y='14' width='44' height='30' rx='6' fill='none' stroke='%236d8dff' stroke-width='5'/%3E%3Cline x1='24' y1='54' x2='40' y2='54' stroke='%236d8dff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #070a12;
-    --bg2: #0b101d;
-    --glass: rgba(255,255,255,.045);
-    --glass2: rgba(255,255,255,.075);
-    --border: rgba(255,255,255,.09);
-    --border2: rgba(255,255,255,.16);
-    --text: #eef1f8;
-    --text2: #8d97ad;
-    --text3: #5b657c;
-    --acc: #6d8dff;
-    --acc2: #a06bff;
-    --green: #3ddc84;
-    --red: #ff5c6a;
-    --orange: #ffb454;
-    --shadow: 0 12px 40px rgba(0,0,0,.5);
-    --r: 16px;
+    --bg: #070a11; --bg2: #0b1120; --card: rgba(18, 26, 43, .72);
+    --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.16);
+    --txt: #e9eef8; --mut: #8b98ad; --dim: #5d6a80;
+    --acc: #5eead4; --acc2: #818cf8; --green: #34d399; --red: #fb7185; --amber: #fbbf24;
+    --r: 18px; --shadow: 0 20px 50px rgba(0,0,0,.55);
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; }
+  html, body { height: 100dvh; }
   body {
-    display: flex; flex-direction: column; overflow: hidden;
-    background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  /* 背景光晕 */
-  body::before {
-    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    display: flex; flex-direction: column; overflow: hidden; color: var(--txt);
+    font-family: var(--sans); -webkit-font-smoothing: antialiased;
     background:
-      radial-gradient(42% 38% at 88% -6%, rgba(109,141,255,.16), transparent 70%),
-      radial-gradient(38% 34% at -8% 108%, rgba(160,107,255,.12), transparent 70%);
+      radial-gradient(60% 40% at 100% 0%, rgba(94,234,212,.10), transparent 60%),
+      radial-gradient(50% 40% at 0% 100%, rgba(129,140,248,.12), transparent 65%),
+      var(--bg);
   }
+  .hidden { display: none !important; }
   .ic { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
   .ic-sm { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 
-  /* ===== 顶栏 ===== */
-  #topbar { position: relative; z-index: 5; padding: calc(12px + env(safe-area-inset-top)) 18px 10px; }
-  .tb-row { display: flex; align-items: center; gap: 12px; }
-  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .brand .logo-badge {
-    width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
-    box-shadow: 0 4px 18px rgba(109,141,255,.4); flex-shrink: 0;
-  }
-  .brand .logo-badge svg { width: 19px; height: 19px; }
-  .brand b { font-size: 15px; font-weight: 700; letter-spacing: .2px; white-space: nowrap; }
-  .brand small { display: block; font-size: 10px; color: var(--text3); font-weight: 500; letter-spacing: .4px; margin-top: 1px; }
-  .tb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-  #conn { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2);
-    background: var(--glass); border: 1px solid var(--border); padding: 5px 12px; border-radius: 999px; backdrop-filter: blur(12px); }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); transition: all .3s; }
+  /* 顶栏 */
+  #topbar { z-index: 10; padding: calc(10px + env(safe-area-inset-top)) 16px 8px; }
+  .tb-row { display: flex; align-items: center; gap: 10px; }
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .logo-badge { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(145deg, #5eead4, #38bdf8 55%, #818cf8); color: #05121a; flex-shrink: 0;
+    box-shadow: 0 6px 20px rgba(56,189,248,.35); }
+  .logo-badge svg { width: 17px; height: 17px; }
+  .brand b { font-size: 14.5px; font-weight: 750; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ver-chip { flex-shrink: 0; font-size: 10px; font-weight: 700; color: var(--acc); border: 1px solid rgba(94,234,212,.3);
+    background: rgba(94,234,212,.08); padding: 2px 7px; border-radius: 999px; letter-spacing: .3px; }
+  .tb-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  #conn { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--mut);
+    background: var(--card); border: 1px solid var(--line); padding: 5px 9px; border-radius: 999px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
   .dot.on { background: var(--green); box-shadow: 0 0 10px var(--green); }
   .dot.err { background: var(--red); box-shadow: 0 0 10px var(--red); }
-  .icon-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border);
-    background: var(--glass); color: var(--text2); display: flex; align-items: center; justify-content: center;
-    cursor: pointer; transition: all .18s; backdrop-filter: blur(12px); }
-  .icon-btn:active { transform: scale(.92); }
-  .icon-btn:hover { color: var(--text); border-color: var(--border2); background: var(--glass2); }
+  .icon-btn { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--mut); display: flex; align-items: center; justify-content: center; }
+  .icon-btn:active { transform: scale(.94); }
+  .icon-btn.on { color: var(--acc); border-color: rgba(94,234,212,.45); }
+  @media (max-width: 400px) { #conn #status { display: none; } #conn { padding: 7px 8px; } }
 
-  /* ===== 状态条 ===== */
-  #stats { position: relative; z-index: 4; display: flex; gap: 8px; padding: 0 18px 8px; overflow-x: auto; scrollbar-width: none; }
+  /* 状态条 */
+  #stats { display: flex; gap: 7px; padding: 2px 16px 10px; overflow-x: auto; scrollbar-width: none; }
   #stats::-webkit-scrollbar { display: none; }
-  .stat { flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text2);
-    background: var(--glass); border: 1px solid var(--border); padding: 5px 12px; border-radius: 10px;
-    font-variant-numeric: tabular-nums; backdrop-filter: blur(10px); }
-  .stat svg { color: var(--text3); }
-  .stat b { color: var(--text); font-weight: 600; }
-  .stat.live { color: var(--green); }
-  .stat.live b { color: var(--green); }
+  .stat { flex-shrink: 0; display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--mut);
+    background: var(--card); border: 1px solid var(--line); padding: 5px 10px; border-radius: 10px;
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stat b { color: var(--txt); font-weight: 650; }
 
-  /* ===== 设备 ===== */
-  #devices { position: relative; z-index: 4; display: flex; gap: 8px; padding: 0 18px 10px; overflow-x: auto; scrollbar-width: none; }
+  /* 视图容器 */
+  #views { flex: 1; min-height: 0; display: flex; }
+  .view { display: none; flex: 1; min-height: 0; flex-direction: column; padding: 0 16px 6px; overflow-y: auto; overscroll-behavior: contain; }
+  .view.active { display: flex; }
+  #view-screen { overflow: hidden; }
+
+  /* 设备 */
+  #devices { display: flex; gap: 7px; padding-bottom: 9px; overflow-x: auto; scrollbar-width: none; }
   #devices::-webkit-scrollbar { display: none; }
-  .chip { flex-shrink: 0; display: flex; align-items: center; gap: 7px; padding: 8px 15px; border-radius: 999px;
-    background: var(--glass); color: var(--text2); font-size: 13px; font-weight: 600;
-    border: 1px solid var(--border); cursor: pointer; white-space: nowrap; transition: all .2s; backdrop-filter: blur(10px); }
-  .chip svg { width: 14px; height: 14px; color: var(--text3); }
-  .chip.active { background: linear-gradient(135deg, rgba(109,141,255,.2), rgba(160,107,255,.16));
-    border-color: rgba(109,141,255,.55); color: #fff; box-shadow: 0 4px 18px rgba(109,141,255,.18); }
-  .chip.active svg { color: var(--acc); }
-  .chip.empty { opacity: .55; cursor: default; }
+  .chip { flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 11px;
+    background: var(--card); color: var(--mut); font-size: 12.5px; font-weight: 600; border: 1px solid var(--line); white-space: nowrap; }
+  .chip.active { color: #04121a; background: linear-gradient(135deg, var(--acc), #7dd3fc); border-color: transparent; }
+  .chip.empty { color: var(--dim); }
 
-  /* ===== 画面区 ===== */
-  #stage { position: relative; z-index: 1; flex: 1; min-height: 0; margin: 0 18px; border-radius: var(--r);
-    background: rgba(3,5,10,.7); border: 1px solid var(--border); overflow: hidden;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: inset 0 0 80px rgba(0,0,0,.55); }
+  /* 画面 */
+  #stage { position: relative; flex: 1; min-height: 140px; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(80% 80% at 50% 40%, #0b1220, #04060b);
+    border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; box-shadow: inset 0 0 60px rgba(0,0,0,.6); }
   #screen { max-width: 100%; max-height: 100%; object-fit: contain; display: none; touch-action: none; }
-  #placeholder { color: var(--text2); font-size: 13.5px; text-align: center; padding: 24px; line-height: 2; }
-  #placeholder .big { width: 52px; height: 52px; color: rgba(255,255,255,.14); display: block; margin: 0 auto 10px; }
-  #fps { position: absolute; top: 12px; left: 12px; z-index: 4; display: flex; align-items: center; gap: 6px;
-    background: rgba(5,8,16,.72); color: var(--green); font-size: 11px; font-weight: 600; letter-spacing: .6px;
-    padding: 5px 11px; border-radius: 999px; backdrop-filter: blur(10px); border: 1px solid rgba(61,220,132,.22); }
-  #fps .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: breath 1.6s ease-in-out infinite; }
-  @keyframes breath { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-  #touch-toggle { position: absolute; top: 12px; right: 12px; z-index: 4; display: flex; align-items: center; gap: 6px;
-    min-height: 40px; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
-    background: rgba(5,8,16,.72); color: var(--text2); border: 1px solid var(--border); cursor: pointer;
-    backdrop-filter: blur(10px); transition: all .2s; }
-  #touch-toggle.on { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff; border-color: transparent; }
+  #fps { position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--green);
+    background: rgba(4,8,15,.75); border: 1px solid rgba(52,211,153,.25); padding: 4px 9px; border-radius: 999px; }
+  #fps .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  #touch-toggle { position: absolute; top: 10px; right: 10px; min-height: 34px; padding: 5px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 650; color: var(--mut); background: rgba(4,8,15,.75); border: 1px solid var(--line); }
+  #touch-toggle.on { color: #04121a; background: var(--acc); border-color: transparent; }
+  #placeholder { color: var(--mut); font-size: 13px; text-align: center; padding: 24px; line-height: 2; }
+  #placeholder .big { width: 46px; height: 46px; display: block; margin: 0 auto 8px; opacity: .55; }
 
-  /* ===== 底部工具栏 ===== */
-  #bar { position: relative; z-index: 5; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
-    padding: 10px 18px calc(12px + env(safe-area-inset-bottom)); }
-  button.base { border: none; border-radius: 14px; font-size: 11.5px; font-weight: 600;
-    background: var(--glass); color: var(--text); display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 5px; transition: all .16s; cursor: pointer; min-height: 52px;
-    backdrop-filter: blur(12px); border: 1px solid var(--border); }
-  button.base:active { transform: scale(.94); }
-  button.base:disabled { opacity: .4; }
-  button.base .ic { color: var(--text2); }
-  button.base:hover { border-color: var(--border2); }
-  button.base.primary { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
-    border-color: transparent; box-shadow: 0 6px 22px rgba(109,141,255,.32); }
-  button.base.primary .ic { color: #fff; }
-  button.base.warn { background: rgba(255,180,84,.12); color: var(--orange); border-color: rgba(255,180,84,.25); }
-  button.base.warn .ic { color: var(--orange); }
-  button.base.danger { background: rgba(255,92,106,.12); color: var(--red); border-color: rgba(255,92,106,.25); }
-  button.base.danger .ic { color: var(--red); }
+  /* 快捷操作 */
+  .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px 0 4px; }
+  .quick .base { min-height: 46px; }
 
-  /* ===== toast ===== */
-  #toast { position: fixed; left: 50%; top: 14%; transform: translateX(-50%) translateY(-8px); z-index: 200;
-    background: rgba(16,21,36,.96); color: var(--text); padding: 11px 20px; border-radius: 12px; font-size: 13.5px;
-    opacity: 0; pointer-events: none; transition: all .25s; border: 1px solid var(--border2); max-width: 86%;
-    text-align: center; box-shadow: var(--shadow); backdrop-filter: blur(16px); }
+  /* 标签栏 */
+  #tabbar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(7,10,17,.92); border-top: 1px solid var(--line); backdrop-filter: blur(18px); z-index: 10; }
+  .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; border-radius: 12px;
+    border: none; background: transparent; color: var(--dim); font-size: 10.5px; font-weight: 650; }
+  .tab .ic { width: 20px; height: 20px; }
+  .tab.active { color: var(--acc); background: rgba(94,234,212,.08); }
+  .tab:active { transform: scale(.95); }
+
+  /* 卡片与控件 */
+  .section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; margin-bottom: 10px; }
+  .section-title { font-size: 11.5px; font-weight: 700; color: var(--mut); letter-spacing: .4px; margin-bottom: 10px; }
+  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+  .row:last-child { margin-bottom: 0; }
+  .base { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px;
+    border-radius: 12px; border: 1px solid var(--line2); background: rgba(255,255,255,.05); color: var(--txt);
+    font-size: 12.5px; font-weight: 650; font-family: var(--sans); padding: 8px 10px; }
+  .base .ic { width: 17px; height: 17px; color: var(--mut); }
+  .base:active { transform: scale(.96); }
+  .base:disabled { opacity: .4; }
+  .base.primary { background: linear-gradient(135deg, var(--acc), #7dd3fc); color: #04121a; border-color: transparent; }
+  .base.primary .ic { color: #04121a; }
+  .base.warn { color: var(--amber); border-color: rgba(251,191,36,.25); background: rgba(251,191,36,.08); }
+  .base.danger { color: var(--red); border-color: rgba(251,113,133,.25); background: rgba(251,113,133,.08); }
+  .label { font-size: 11.5px; color: var(--mut); margin: 8px 0 6px; display: flex; align-items: center; gap: 4px; }
+  input[type=text], input[type=password] { width: 100%; padding: 11px 13px; border-radius: 11px; border: 1px solid var(--line);
+    background: rgba(4,8,15,.6); color: var(--txt); font-size: 13px; font-family: var(--sans); }
+  input[type=text]:focus, input[type=password]:focus { outline: none; border-color: rgba(94,234,212,.5); }
+  input[type=file] { width: 100%; font-size: 12px; color: var(--mut); margin-bottom: 8px; }
+  input[type=range] { width: 100%; accent-color: var(--acc); }
+  #touchpad { display: flex; align-items: center; gap: 8px; padding: 22px 14px; border-radius: 14px; border: 1px dashed var(--line2);
+    color: var(--dim); font-size: 12px; justify-content: center; background: rgba(4,8,15,.4); }
+  #touchpad svg { width: 18px; height: 18px; }
+  .sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; }
+  .sw.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(94,234,212,.5); }
+  #draw-colors { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  #proc-list, #file-list, #proof-grid, #audio-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  #proc-list > div, #file-list > div { display: flex; justify-content: space-between; gap: 8px; padding: 9px 11px;
+    border-radius: 10px; background: rgba(255,255,255,.04); font-size: 12px; }
+  .file-ic { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #proof-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  #proof-grid img { width: 47%; border-radius: 10px; border: 1px solid var(--line); }
+  #audio-list { margin-top: 8px; }
+  #audio-list .base { justify-content: flex-start; min-height: 38px; }
+  #toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(8px);
+    max-width: calc(100vw - 40px); padding: 10px 16px; border-radius: 12px; font-size: 12.5px; font-weight: 600;
+    background: rgba(17,24,39,.95); border: 1px solid var(--line2); color: var(--txt); opacity: 0; pointer-events: none;
+    transition: all .22s; z-index: 300; text-align: center; }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* ===== 弹层 ===== */
-  .mask { position: fixed; inset: 0; background: rgba(2,4,10,.62); z-index: 60; backdrop-filter: blur(3px); }
-  .sheet { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
-    z-index: 61; width: min(600px, calc(100vw - 24px)); max-height: 86vh; overflow-y: auto; overscroll-behavior: contain;
-    background: linear-gradient(180deg, rgba(20,26,44,.97), rgba(13,17,30,.97));
-    border: 1px solid var(--border2); border-radius: 24px; padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
-    box-shadow: var(--shadow); scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
-    animation: slideUp .28s cubic-bezier(.2,.8,.2,1); }
-  @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(26px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-  .sheet::-webkit-scrollbar { width: 5px; }
-  .sheet::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-  .sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-  .sheet-head .grip { width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.14); margin: 0 auto 2px; }
-  .sheet-head h3 { font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+  /* 弹层（聊天/字幕/登录） */
+  .mask { position: fixed; inset: 0; background: rgba(2,5,10,.66); backdrop-filter: blur(4px); z-index: 60; }
+  .sheet { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    z-index: 61; width: min(600px, calc(100vw - 20px)); max-height: 84vh; overflow-y: auto;
+    background: linear-gradient(180deg, #131c2e, #0b1120); border: 1px solid var(--line2); border-radius: 22px;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); }
+  .sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .sheet-head .grip { width: 34px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.18); margin: 0 auto 2px; }
+  .sheet-head h3 { font-size: 15px; font-weight: 750; }
   .sheet-head .icon-btn { margin-left: auto; }
-  .section { margin-bottom: 18px; }
-  .section-title { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text3);
-    letter-spacing: 1.2px; margin-bottom: 9px; font-weight: 700; text-transform: uppercase; }
-  .section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border2), transparent); }
-  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
-  .sheet button.base { min-height: 46px; flex-direction: row; gap: 7px; border-radius: 12px; font-size: 12.5px; }
-  .sheet input[type=text], .sheet input[type=password] { width: 100%; padding: 12px 14px; border-radius: 12px;
-    border: 1px solid var(--border); background: rgba(7,10,18,.7); color: var(--text); font-size: 16px;
-    margin-bottom: 8px; outline: none; transition: border-color .2s; }
-  .sheet input:focus { border-color: var(--acc); }
-  .label { font-size: 12px; color: var(--text2); margin: 8px 0 4px; }
-  #touchpad { width: 100%; height: 170px; background: rgba(7,10,18,.7); border: 1px dashed var(--border2);
-    border-radius: 14px; touch-action: none; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 8px; color: var(--text3); font-size: 12.5px; margin-bottom: 8px; }
-  #touchpad svg { width: 30px; height: 30px; color: var(--text3); opacity: .6; }
-  .list-box { background: rgba(7,10,18,.7); border: 1px solid var(--border); border-radius: 12px;
-    max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
-  .list-box > div { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px;
-    display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .list-box > div:last-child { border-bottom: none; }
-  .list-box > div:active { background: rgba(255,255,255,.04); }
-  .file-ic { color: var(--text3); display: inline-flex; }
-  #proof-grid { display: flex; flex-wrap: wrap; gap: 8px; max-height: 210px; overflow-y: auto; margin-bottom: 8px; }
-  .sw { width: 32px; height: 32px; border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: all .15s; }
-  .sw.active { border-color: #fff; transform: scale(1.08); }
-  input[type=range] { width: 100%; accent-color: var(--acc); margin: 6px 0 10px; }
-  .kb-hint { font-size: 11px; color: var(--text3); margin: -2px 0 8px; }
+  #chat-panel textarea, #chat-panel input, #ov-panel input { width: 100%; }
+  #chat-log { background: rgba(4,8,15,.7); border: 1px solid var(--line); border-radius: 14px; padding: 10px;
+    font-size: 12.5px; line-height: 1.7; }
+  .login-card { position: fixed; z-index: 61; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(400px, calc(100vw - 32px)); background: linear-gradient(180deg, #131c2e, #0b1120);
+    border: 1px solid var(--line2); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); text-align: center; }
+  .login-logo { width: 46px; height: 46px; margin: 0 auto 12px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(145deg, #5eead4, #818cf8); color: #05121a; }
+  .login-logo svg { width: 22px; height: 22px; }
+  .login-card h1 { font-size: 17px; margin-bottom: 6px; }
+  .login-card p { font-size: 12px; color: var(--mut); margin-bottom: 14px; line-height: 1.6; }
+  .login-card input { margin-bottom: 10px; text-align: center; }
+  .login-card button { width: 100%; min-height: 44px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, var(--acc), #7dd3fc); color: #04121a; font-weight: 750; font-size: 13px; }
+  .login-foot { margin-top: 12px; font-size: 10.5px; color: var(--dim); line-height: 1.6; }
+  #login-hint { min-height: 16px; }
 
-  /* ===== 登录页 ===== */
-  #token-box { position: fixed; inset: 0; z-index: 300; background: var(--bg);
-    display: flex; align-items: center; justify-content: center; padding: 24px; }
-  #token-box::before { content: ""; position: absolute; inset: 0; pointer-events: none;
-    background:
-      radial-gradient(46% 40% at 82% -8%, rgba(109,141,255,.2), transparent 70%),
-      radial-gradient(42% 36% at 6% 110%, rgba(160,107,255,.16), transparent 70%); }
-  .login-card { position: relative; width: 100%; max-width: 360px; text-align: center;
-    background: linear-gradient(180deg, rgba(22,28,48,.94), rgba(14,18,32,.94));
-    border: 1px solid var(--border2); border-radius: 26px; padding: 34px 28px 30px; box-shadow: var(--shadow); }
-  .login-logo { width: 62px; height: 62px; margin: 0 auto 18px; border-radius: 18px;
-    background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 10px 30px rgba(109,141,255,.4); }
-  .login-logo svg { width: 30px; height: 30px; }
-  .login-card h1 { font-size: 19px; font-weight: 700; margin-bottom: 5px; letter-spacing: .3px; }
-  .login-card p { font-size: 12.5px; color: var(--text2); margin-bottom: 22px; }
-  .login-card input { width: 100%; padding: 13px 15px; border-radius: 12px; border: 1px solid var(--border2);
-    background: rgba(7,10,18,.7); color: var(--text); font-size: 16px; text-align: center; outline: none;
-    letter-spacing: 1.5px; margin-bottom: 12px; transition: border-color .2s; }
-  .login-card input:focus { border-color: var(--acc); }
-  .login-card button { width: 100%; min-height: 48px; border: none; border-radius: 12px; font-size: 14.5px;
-    font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--acc), var(--acc2));
-    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
-    box-shadow: 0 8px 24px rgba(109,141,255,.35); transition: all .18s; }
-  .login-card button:active { transform: scale(.97); }
-  .login-foot { margin-top: 14px; font-size: 11px; color: var(--text3); }
-
-  .hidden { display: none !important; }
-
-  /* ===== 桌面适配 ===== */
-  @media (min-width: 768px) {
-    #topbar, #stats, #devices { padding-left: 28px; padding-right: 28px; }
-    #stage { margin: 0 28px; }
-    #bar { padding-left: 28px; padding-right: 28px; }
-    .sheet { bottom: 50%; transform: translate(-50%, 50%); animation: popIn .25s ease-out; }
-    @keyframes popIn { from { opacity: 0; transform: translate(-50%, 50%) scale(.97); } to { opacity: 1; transform: translate(-50%, 50%) scale(1); } }
-  }
-
-  /* ===== v3.5 新布局：标签分组 / 横屏 ===== */
-  .sheet-tabs { display: flex; gap: 6px; margin: -6px 0 14px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-  .sheet-tabs::-webkit-scrollbar { display: none; }
-  .sheet-tab { flex: 0 0 auto; border: 1px solid var(--border); background: var(--glass);
-    color: var(--text2); border-radius: 999px; padding: 8px 14px; font-size: 12.5px; font-weight: 600;
-    transition: all .18s; }
-  .sheet-tab.active { background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
-    border-color: transparent; box-shadow: 0 4px 16px rgba(109,141,255,.35); }
-  .sheet-body { min-height: 120px; }
-  .tab-pane.hidden { display: none; }
-  .tab-pane > .section:last-child { margin-bottom: 4px; }
-  .sheet-foot { margin-top: 12px; }
-  .sheet-foot .base { width: 100%; justify-content: center; }
-  #stage .screen-wrap { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-  #land-exit { position: fixed; z-index: 70; right: calc(12px + env(safe-area-inset-right)); top: calc(12px + env(safe-area-inset-top));
-    align-items: center; gap: 6px; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--border2);
-    background: rgba(13,17,30,.82); color: var(--text); font-size: 12.5px; font-weight: 600;
-    backdrop-filter: blur(14px); box-shadow: var(--shadow); }
-  #land-exit:not(.hidden) { display: flex; }
-  #btn-land.on { color: var(--acc); border-color: rgba(109,141,255,.6); }
-  body.landscape #topbar,
-  body.landscape #stats,
-  body.landscape #devices { display: none; }
+  /* 横屏 */
+  #land-exit { position: fixed; z-index: 120; right: calc(10px + env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top));
+    padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line2); background: rgba(11,17,32,.85);
+    color: var(--txt); font-size: 12px; font-weight: 650; backdrop-filter: blur(14px); }
+  body.landscape #topbar, body.landscape #tabbar { display: none; }
   body.landscape { background: #000; }
-  body.landscape #stage { padding: 0; flex: 1; }
-  body.landscape #stage .screen-wrap { border-radius: 0; }
-  body.landscape #screen { border-radius: 0; }
-  body.landscape #bar { position: fixed; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom));
-    transform: translateX(-50%); width: min(680px, calc(100vw - 24px)); z-index: 20; }
-  body.landscape #more-panel { left: auto; right: calc(10px + env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top));
-    bottom: calc(10px + env(safe-area-inset-bottom)); transform: none; width: min(560px, 58vw); max-height: none;
-    animation: none; }
-  body.landscape #chat-panel, body.landscape #ov-panel { left: auto; right: calc(10px + env(safe-area-inset-right)); transform: none; width: min(560px, 58vw); }
+  body.landscape #views { padding: 0; }
+  body.landscape .view { padding: 0; }
+  body.landscape #stage { border: none; border-radius: 0; }
+  body.landscape .quick { position: fixed; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom));
+    transform: translateX(-50%); width: min(520px, calc(100vw - 24px)); z-index: 20;
+    background: rgba(11,17,32,.85); border: 1px solid var(--line); border-radius: 16px; padding: 8px;
+    backdrop-filter: blur(14px); }
+  body.landscape .section { max-width: 720px; width: 100%; margin: 0 auto 8px; }
   @media (orientation: landscape) {
-    #bar button.base { min-height: 40px; }
-  }
-  @media (max-width: 380px) {
-    .brand small { display: none; }
+    .view { padding: 8px 12px; }
+    #view-screen { padding: 0; }
   }
 
-  /* ===== v3.5.1 布局修正 ===== */
-  html, body { height: 100dvh; }
-  #bar { grid-template-columns: repeat(4, 1fr); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
-  #stats { align-items: center; padding-top: 2px; }
-  .stat { white-space: nowrap; font-size: 12px; }
-  .brand b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .brand > div:last-child { min-width: 0; }
-  .tb-right { gap: 7px; }
-  #conn { padding: 5px 10px; font-size: 11.5px; white-space: nowrap; }
-  #stage { min-height: 120px; margin-bottom: 6px; }
-  @media (max-width: 400px) {
-    #conn #status { display: none; }
-    #conn { padding: 8px 10px; }
-  }
-  @media (orientation: landscape) {
-    #bar { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
-  }
+  #token-box { position: fixed; inset: 0; z-index: 200; background: rgba(4,7,13,.82); backdrop-filter: blur(8px); }
+  #token-input { }
 </style>
-
 <body>
-  <!-- ===== 顶栏 ===== -->
   <header id="topbar">
     <div class="tb-row">
       <div class="brand">
-        <div class="logo-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
-        <div><b>Phone PC Monitor</b><small>局域网 · 实时控制</small></div>
+        <div class="logo-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <b>Phone PC Monitor</b>
+        <span id="ver-chip" class="ver-chip">v…</span>
       </div>
       <div class="tb-right">
         <div id="conn"><span id="dot" class="dot"></span><span id="status">连接中…</span></div>
-        <button id="btn-full" class="icon-btn" title="全屏" aria-label="全屏"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
-        <button id="btn-land" class="icon-btn" title="横屏" aria-label="横屏"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M19 7l2 2-2 2"/><path d="M21 9H16"/></svg></button>
-        <button id="btn-logout" class="icon-btn" title="退出登录" aria-label="退出登录"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+        <button id="btn-full" class="icon-btn" title="全屏"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+        <button id="btn-land" class="icon-btn" title="横屏"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M19 7l2 2-2 2"/><path d="M21 9H16"/></svg></button>
+        <button id="btn-logout" class="icon-btn" title="退出登录"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
       </div>
     </div>
-  </header>
-
-  <!-- ===== 状态条 ===== -->
 <div id="stats">
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>CPU <b id="st-cpu">--</b></span>
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>内存 <b id="st-mem">--</b></span>
@@ -301,8 +214,12 @@
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg><b id="st-down">--</b></span>
     <span class="stat" id="st-presence">离开</span>
     <span class="stat"><svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><b id="st-time">--</b></span>
+    <span class="stat">延迟 <b id="st-ping">--</b></span>
   </div>
+  </header>
 
+  <main id="views">
+    <section id="view-screen" class="view active">
   <div id="devices"><div class="chip empty">等待设备…</div></div>
 
     <!-- ===== 画面 ===== -->
@@ -317,41 +234,22 @@
   </div>
 
     <!-- ===== 底部工具栏 ===== -->
-<nav id="bar">
-    <button id="btn-screen" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>屏幕</button>
-    <button id="btn-cam" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></svg>摄像头</button>
-    <button id="btn-ov" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><line x1="6" y1="9" x2="13" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/></svg>字幕</button>
-    <button id="btn-more" class="base"><svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>更多</button>
-  </nav>
+      <div class="quick">
+        <button id="btn-screen" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>屏幕</button>
+        <button id="btn-cam" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></svg>摄像头</button>
+        <button id="act-snap" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>存图</button>
+        <button id="btn-ov" class="base"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><line x1="6" y1="9" x2="13" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/></svg>字幕</button>
+      </div>
+    </section>
 
-    <div id="toast"></div>
-  <button id="land-exit" class="hidden">退出横屏</button>
-
-  <!-- ===== 控制台（标签分组） ===== -->
-  <div id="more-mask" class="mask hidden"></div>
-  <div id="more-panel" class="sheet hidden">
-    <div class="sheet-head"><div class="grip"></div><h3>控制台</h3><button class="icon-btn" id="more-close" aria-label="关闭"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
-    <div class="sheet-tabs">
-      <button class="sheet-tab active" data-pane="pane-control">控制</button>
-      <button class="sheet-tab" data-pane="pane-sound">声音</button>
-      <button class="sheet-tab" data-pane="pane-system">系统</button>
-      <button class="sheet-tab" data-pane="pane-files">文件</button>
-      <button class="sheet-tab" data-pane="pane-update">更新</button>
-    </div>
-    <div class="sheet-body">
-    <div id="pane-control" class="tab-pane">
-<div class="section">
-      <div class="section-title">画面卡住？</div>
-      <div class="row"><button id="act-resync" class="base">重新拉画面</button></div>
-    </div>
+    <section id="view-control" class="view">
 <div class="section">
       <div class="section-title">鼠标触控板</div>
       <div id="touchpad">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
         滑动移动 · 单击=左键 · 双击=右键
       </div>
-    </div>
-<div class="section">
+    </div><div class="section">
       <div class="section-title">快捷键</div>
       <div class="row">
         <button id="sc-cc" class="base">Ctrl+C</button>
@@ -368,13 +266,11 @@
         <button id="sc-back" class="base">退格</button>
         <button id="sc-esc" class="base">Esc</button>
       </div>
-    </div>
-<div class="section">
+    </div><div class="section">
       <div class="section-title">远程键盘（打字到电脑）</div>
       <input type="text" id="kb-input" placeholder="在这里打字，实时发送到电脑" autocomplete="off">
       <div class="kb-hint">回车发送 · 退格删除 · 支持特殊键</div>
-    </div>
-<div class="section">
+    </div><div class="section">
       <div class="section-title">演示 / PPT</div>
       <div class="row">
         <button id="key-left" class="base primary"><svg class="ic" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>上一页</button>
@@ -384,8 +280,7 @@
         <button id="key-f5" class="base">开始放映</button>
         <button id="key-esc" class="base">退出</button>
       </div>
-    </div>
-<div class="section">
+    </div><div class="section">
       <div class="section-title">涂鸦（在屏幕上画）</div>
       <div class="row">
         <button id="draw-mode" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>开始画</button>
@@ -393,16 +288,19 @@
       </div>
       <div class="label">颜色</div>
       <div id="draw-colors" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
+    </div><div class="section">
+      <div class="section-title">画面卡住</div>
+      <div class="row"><button id="act-resync" class="base">重新拉画面</button></div>
     </div>
-    </div>
-    <div id="pane-sound" class="tab-pane hidden">
+    </section>
+
+    <section id="view-sound" class="view">
 <div class="section">
-      <div class="section-title">语音喊话 (TTS)</div>
+      <div class="section-title">朗读 / 喊话</div>
       <input type="text" id="tts-text" placeholder="电脑会念这段话">
       <div class="row"><button id="tts-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>播放</button></div>
-    </div>
-<div class="section">
-      <div class="section-title">喊话 / 放音（上传音频到电脑播放）</div>
+    </div><div class="section">
+      <div class="section-title">放音 / 按住说话</div>
       <input type="file" id="audio-file" accept="audio/*" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
       <div class="row"><button id="audio-upload" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传并播放</button></div>
       <div class="row"><button id="talk-btn" class="base primary" style="touch-action:none;user-select:none;-webkit-user-select:none;">按住说话（松开发送到电脑）</button></div>
@@ -418,9 +316,8 @@
       <input type="range" id="audio-vol" min="0" max="100" value="80">
       <div class="label">已上传（点一下播放）</div>
       <div id="audio-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-    </div>
-<div class="section">
-      <div class="section-title">音量 / 亮度</div>
+    </div><div class="section">
+      <div class="section-title">音量与亮度</div>
       <div class="row">
         <button id="vol-up" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/><line x1="19.5" y1="7.5" x2="19.5" y2="12.5"/></svg>音量+</button>
         <button id="vol-down" class="base"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><line x1="17" y1="10" x2="22" y2="10"/></svg>音量-</button>
@@ -428,14 +325,12 @@
       </div>
       <div class="label">亮度 <span id="br-val">70</span>%</div>
       <input type="range" id="br-slider" min="10" max="100" value="70">
-    </div>
-<div class="section">
-      <div class="section-title">弹窗气泡</div>
+    </div><div class="section">
+      <div class="section-title">弹窗</div>
       <input type="text" id="popup-text" placeholder="屏幕角落弹个气泡">
       <div class="row"><button id="popup-send" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>弹出</button></div>
-    </div>
-<div class="section">
-      <div class="section-title">闹钟提醒</div>
+    </div><div class="section">
+      <div class="section-title">提醒</div>
       <input type="text" id="alarm-text" placeholder="提醒内容，如：该休息了">
       <div class="row">
         <button id="alarm-1" class="base">1分钟</button>
@@ -444,12 +339,12 @@
         <button id="alarm-30" class="base">30分钟</button>
       </div>
     </div>
-    </div>
-    <div id="pane-system" class="tab-pane hidden">
+    </section>
+
+    <section id="view-system" class="view">
 <div class="section">
-      <div class="section-title">系统</div>
+      <div class="section-title">电源与画面</div>
       <div class="row">
-        <button id="act-snap" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截图</button>
         <button id="act-lock" class="base warn"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>锁屏</button>
         <button id="act-cancel" class="base"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>取消关机</button>
       </div>
@@ -458,53 +353,46 @@
         <button id="act-shutdown" class="base danger"><svg class="ic" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>关机</button>
         <button id="act-blackout" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>黑屏</button>
       </div>
-    </div>
-<div class="section">
-      <div class="section-title">输入</div>
+    </div><div class="section">
+      <div class="section-title">打开与剪贴板</div>
       <input type="text" id="open-target" placeholder="打开网址或路径" />
       <div class="row"><button id="act-open" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>打开</button></div>
       <input type="text" id="clip-text" placeholder="复制文字到电脑剪贴板" />
       <div class="row"><button id="act-clip" class="base primary"><svg class="ic" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>发送到剪贴板</button></div>
-    </div>
-<div class="section">
-      <div class="section-title">进程管理</div>
+    </div><div class="section">
+      <div class="section-title">进程</div>
       <div class="row"><button id="btn-proc" class="base primary"><svg class="ic" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg>刷新进程列表</button></div>
       <div id="proc-list" class="list-box"></div>
-    </div>
-<div class="section">
-      <div class="section-title">定时截图存证</div>
+    </div><div class="section">
+      <div class="section-title">定时存证</div>
       <div class="row">
         <button id="proof-off" class="base">关闭</button>
         <button id="proof-5" class="base">5分钟</button>
         <button id="proof-15" class="base">15分钟</button>
         <button id="proof-30" class="base">30分钟</button>
       </div>
-    </div>
-<div class="section">
-      <div class="section-title">壁纸 / 聊天</div>
+    </div><div class="section">
+      <div class="section-title">存证相册</div>
+      <div class="row"><button id="btn-proof" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截一张存到服务器</button></div>
+      <div id="proof-grid"></div>
+    </div><div class="section">
+      <div class="section-title">文件</div>
+      <input type="text" id="file-path" placeholder="路径，如 C:\Users\35722\Desktop" />
+      <div class="row"><button id="act-list" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>浏览目录</button></div>
+      <div id="file-list" class="list-box"></div>
+    </div><div class="section">
+      <div class="section-title">壁纸与聊天</div>
       <input type="file" id="wp-file" accept="image/*" style="font-size:12px;color:var(--text2);margin-bottom:8px;">
       <div class="row">
         <button id="act-chat" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>打开聊天</button>
         
       </div>
     </div>
-    </div>
-    <div id="pane-files" class="tab-pane hidden">
+    </section>
+
+    <section id="view-update" class="view">
 <div class="section">
-      <div class="section-title">文件管理</div>
-      <input type="text" id="file-path" placeholder="路径，如 C:\Users\35722\Desktop" />
-      <div class="row"><button id="act-list" class="base"><svg class="ic" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>浏览目录</button></div>
-      <div id="file-list" class="list-box"></div>
-    </div>
-<div class="section">
-      <div class="section-title">截图存证</div>
-      <div class="row"><button id="btn-proof" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>截一张存到服务器</button></div>
-      <div id="proof-grid"></div>
-    </div>
-    </div>
-    <div id="pane-update" class="tab-pane hidden">
-<div class="section">
-      <div class="section-title">系统更新（热更新）</div>
+      <div class="section-title">系统更新</div>
       <div class="label" id="ver-line">当前版本：…</div>
       <input type="file" id="update-file" accept=".zip" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
       <div class="row"><button id="update-upload" class="base primary">上传更新包</button></div>
@@ -515,10 +403,24 @@
       </div>
       <div class="label" style="font-size:11px;color:var(--text3);line-height:1.5">更新包用 GitHub Releases 里的 phone-pc-monitor-win.zip。上传后会校验 sha256；应用时页面立即生效，程序自动重启（手机断线几秒后自动重连）。</div>
     </div>
-    </div>
-    </div>
-    <div class="sheet-foot"><button id="more-close2" class="base">关闭</button></div>
-  </div>
+      <div class="section">
+        <div class="section-title">页面缓存</div>
+        <div class="row"><button id="update-refresh" class="base">强制刷新页面</button></div>
+        <div class="label" style="font-size:11px;color:var(--dim);line-height:1.6">更新后如果界面没变，点这里强制刷新（会带上版本参数绕开缓存）。</div>
+      </div>
+    </section>
+  </main>
+
+  <nav id="tabbar">
+    <button class="tab active" data-view="view-screen"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>画面</button>
+    <button class="tab" data-view="view-control"><svg class="ic" viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>控制</button>
+    <button class="tab" data-view="view-sound"><svg class="ic" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>声音</button>
+    <button class="tab" data-view="view-system"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>系统</button>
+    <button class="tab" data-view="view-update"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>更新</button>
+  </nav>
+
+  <div id="toast"></div>
+  <button id="land-exit" class="hidden">退出横屏</button>
 
 <!-- ===== 聊天面板 ===== -->
   <div id="chat-mask" class="mask hidden"></div>
@@ -680,6 +582,10 @@
         else if (m.type === 'file_data') downloadFile(m);
         else if (m.type === 'process_list') renderProcs(m);
         else if (m.type === 'audio_state') { audioState = m; updateAudioUI(); }
+        else if (m.type === 'pong') {
+          var rtt = Date.now() - m.ts;
+          $('st-ping').textContent = (rtt >= 0 ? rtt : 0) + 'ms';
+        }
         return;
       }
       if (!lastHeader || lastHeader.agent !== selected) return;
@@ -729,19 +635,25 @@
     else if (el.msRequestFullscreen) { el.msRequestFullscreen(); }
     else { toast('当前浏览器不支持全屏'); }
   };
-  $('btn-more').onclick = function () {
-    $('more-mask').classList.remove('hidden'); $('more-panel').classList.remove('hidden');
-    loadAudioList();
-    updateAudioUI();
-    loadVersion();
-    $('https-hint').textContent = window.isSecureContext
-      ? ''
-      : '提示：按住说话需要 HTTPS。把 config.json 里的 "https" 改成 true 后重启，手机首次打开会提示不安全，点「高级 → 继续前往」。';
-  };
-  function closeMore() { $('more-mask').classList.add('hidden'); $('more-panel').classList.add('hidden'); }
-  $('more-mask').onclick = closeMore;
-  $('more-close').onclick = closeMore;
-  $('more-close2').onclick = closeMore;
+  function closeMore() {}   // 兼容旧动作里的关闭调用
+
+  // ---------- 底部导航 ----------
+  function showView(id) {
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === id); });
+    document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === id); });
+    var view = $(id);
+    if (view) view.scrollTop = 0;
+    if (id === 'view-sound') {
+      loadAudioList();
+      updateAudioUI();
+      $('https-hint').textContent = window.isSecureContext ? ''
+        : '按住说话需要 HTTPS：把 config.json 里的 "https" 改成 true 后重启，手机首次打开点「高级 → 继续前往」。';
+    }
+    if (id === 'view-update') loadVersion();
+  }
+  document.querySelectorAll('.tab').forEach(function (b) {
+    b.onclick = function () { showView(b.getAttribute('data-view')); };
+  });
 
   function addChatMsg(who, text) {
     var log = $('chat-log');
@@ -1132,6 +1044,7 @@
         var p = d.pending;
         if (p && p.version) line += ' · 待应用：' + p.version;
         $('ver-line').textContent = line;
+        $('ver-chip').textContent = 'v' + (d.version || '?');
         var pending = !!(p && (p.has_payload || (p.static_files && p.static_files.length)));
         $('update-apply').disabled = !pending;
         $('update-cancel').disabled = !pending;
@@ -1174,7 +1087,7 @@
         $('update-status').textContent = x.d.message || '已应用';
         toast(x.d.message || '已应用');
         if (x.d.restart) setTimeout(function () { location.reload(); }, 7000);
-        else setTimeout(loadVersion, 1500);
+        else setTimeout(hardRefresh, 1200);
       })
       .catch(function (e) {
         $('update-status').textContent = '应用失败：' + e.message;
@@ -1409,21 +1322,6 @@
   }, 4000);
 
 
-  // ---------- v3.5 标签分组 ----------
-  function switchPane(pid) {
-    document.querySelectorAll('.sheet-tab').forEach(function (b) {
-      b.classList.toggle('active', b.getAttribute('data-pane') === pid);
-    });
-    document.querySelectorAll('.tab-pane').forEach(function (p) {
-      p.classList.toggle('hidden', p.id !== pid);
-    });
-    var panel = $('more-panel');
-    if (panel) panel.scrollTop = 0;
-  }
-  document.querySelectorAll('.sheet-tab').forEach(function (b) {
-    b.onclick = function () { switchPane(b.getAttribute('data-pane')); };
-  });
-
   // ---------- v3.5 横屏全屏 ----------
   var landMode = false;
   function setLandMode(on) {
@@ -1434,6 +1332,7 @@
   }
   function enterLand() {
     setLandMode(true);
+    showView('view-screen');
     try {
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(function () {});
@@ -1458,9 +1357,18 @@
     if (deg === 90) setLandMode(true);
     else if (!landMode) setLandMode(false);
   });
-  // 打开控制台时默认落到「控制」标签
-  switchPane('pane-control');
+  // 强制刷新（绕过缓存）
+  function hardRefresh() {
+    location.href = location.pathname + '?token=' + encodeURIComponent(token) + '&v=' + Date.now();
+  }
+  $('update-refresh').onclick = function () { toast('正在强制刷新…'); setTimeout(hardRefresh, 300); };
 
+  // 延迟测量
+  setInterval(function () {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+  }, 5000);
+
+  showView('view-screen');
   connect();
 })();
 </script>

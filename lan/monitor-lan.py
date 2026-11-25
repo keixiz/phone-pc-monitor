@@ -74,7 +74,7 @@ ACCESS_FILE = os.path.join(BASE_DIR, "访问地址.txt")
 LOG_FILE = os.path.join(BASE_DIR, "monitor-lan.log")
 UPDATES_DIR = os.path.join(BASE_DIR, "updates")
 STATIC_OVERRIDE_DIR = os.path.join(BASE_DIR, "static")   # 热更新后的页面放这里，优先于 exe 内置页面
-APP_VERSION = "3.5"
+APP_VERSION = "3.6"
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_PAYLOAD_EXTS = (".exe", ".py")
 UPDATE_STATIC_EXTS = (".html", ".js", ".css", ".svg", ".png", ".ico", ".woff2", ".json", ".txt")
@@ -626,6 +626,8 @@ async def viewer_session(request, ws):
                         await recompute_streams()
                     else:
                         await try_send_json(ws, {"type": "toast", "text": f"设备 {target} 不在线"})
+                elif t == "ping":
+                    await try_send_json(ws, {"type": "pong", "ts": data.get("ts")})
                 elif t == "resync":
                     # 手机端发现画面停住时自动请求：恢复推流 + 补发最新帧
                     await recompute_streams()
@@ -692,7 +694,8 @@ async def index(request):
         page = os.path.join(STATIC_DIR, "index.html")
     if not os.path.exists(page):
         return web.Response(status=500, text="static/index.html 缺失，请重新安装/打包")
-    return web.FileResponse(page, headers={"Cache-Control": "no-cache"})
+    return web.FileResponse(page, headers={"Cache-Control": "no-store, must-revalidate",
+                                          "Pragma": "no-cache", "Expires": "0"})
 
 
 async def health(request):
@@ -2715,36 +2718,85 @@ async def upload_update(request):
 
 
 def _restart_after_update():
-    """响应发出后重启：exe 用 PowerShell 脚本等本进程退出再替换并拉起；源码版直接重载自己"""
+    """响应发出后重启：exe 用 PowerShell 等本进程退出再替换（备份/校验/回滚）；源码版直接重载"""
     if FROZEN:
         target = os.path.abspath(sys.executable)
         payload = os.path.join(UPDATES_DIR, "payload.bin")
+        backup = os.path.join(os.path.dirname(target), "phone-pc-monitor.old.exe")
+        log_path = os.path.join(UPDATES_DIR, "apply-update.log")
         ps1 = os.path.join(UPDATES_DIR, "apply-update.ps1")
+        port = int(CONFIG.get("port", 8000))
         contents = """$ErrorActionPreference = 'SilentlyContinue'
+$logPath = '%s'
+function Log($m) { Add-Content -LiteralPath $logPath -Value ((Get-Date -Format o) + ' ' + $m) }
 $pidToWait = %d
 $target = '%s'
 $payload = '%s'
+$backup = '%s'
+$port = %d
+Log ('update start; waiting pid ' + $pidToWait)
 for ($i = 0; $i -lt 240; $i++) {
   if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) { break }
   Start-Sleep -Milliseconds 500
 }
-for ($i = 0; $i -lt 15; $i++) {
+Log 'old process gone'
+if (Test-Path -LiteralPath $target) {
+  for ($i = 0; $i -lt 5; $i++) {
+    try { Copy-Item -LiteralPath $target -Destination $backup -Force -ErrorAction Stop; break }
+    catch { Start-Sleep -Seconds 1 }
+  }
+  Log 'backup done'
+}
+$want = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash.ToLower()
+$ok = $false
+for ($i = 0; $i -lt 20; $i++) {
   try {
     Copy-Item -LiteralPath $payload -Destination $target -Force -ErrorAction Stop
-    break
-  } catch { Start-Sleep -Seconds 1 }
+    $got = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLower()
+    if ($got -eq $want) { $ok = $true; break }
+    Log 'hash mismatch after copy'
+  } catch { }
+  Start-Sleep -Seconds 1
 }
+if (-not $ok) {
+  Log 'copy/verify failed; rollback'
+  if (Test-Path -LiteralPath $backup) { Copy-Item -LiteralPath $backup -Destination $target -Force }
+  Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target)
+  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+  exit 1
+}
+Log 'copied and verified; starting new version'
 Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target)
+$up = $false
+for ($i = 0; $i -lt 60; $i++) {
+  Start-Sleep -Milliseconds 500
+  try {
+    $c = New-Object System.Net.Sockets.TcpClient
+    $c.Connect('127.0.0.1', $port)
+    if ($c.Connected) { $up = $true; $c.Close(); break }
+    $c.Close()
+  } catch { }
+}
+if (-not $up) {
+  Log 'new version did not listen; rollback'
+  Get-Process | Where-Object { $_.Path -eq $target } | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 1
+  if (Test-Path -LiteralPath $backup) { Copy-Item -LiteralPath $backup -Destination $target -Force }
+  Start-Process -FilePath $target -WorkingDirectory (Split-Path -Parent $target)
+  Log 'rollback done'
+} else {
+  Log 'update success'
+}
 Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-""" % (os.getpid(), target.replace("'", "''"), payload.replace("'", "''"))
+""" % (log_path.replace("'", "''"), os.getpid(), target.replace("'", "''"),
+       payload.replace("'", "''"), backup.replace("'", "''"), port)
         with open(ps1, "w", encoding="utf-8-sig") as f:
             f.write(contents)
-        flags = 0x08000000 if sys.platform == "win32" else 0   # CREATE_NO_WINDOW
-        log.info("热更新：等待进程退出后替换 %s", target)
+        flags = 0x08000000 if sys.platform == "win32" else 0
+        log.info("热更新：等待进程退出后替换 %s（有备份回滚，日志 %s）", target, log_path)
         subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
                           "-WindowStyle", "Hidden", "-File", ps1],
                          creationflags=flags, close_fds=True)
-        # 给响应一点时间写回浏览器，然后退出；PowerShell 会等本进程消失后替换并重新拉起
         time.sleep(0.5)
         log.info("热更新：退出旧进程，交给更新脚本替换文件")
         os._exit(0)
