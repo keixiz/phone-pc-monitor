@@ -9,6 +9,7 @@
   "camera_index": 0,
   "motion_threshold": 8.0,
   "demo": false,
+  "https": false,
   "notify": {
     "channel": "off",
     "topic": "",

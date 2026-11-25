@@ -43,6 +43,13 @@
 - exe 是 `--onefile --noconsole`：双击静默运行，日志在 `monitor-lan.log`，地址在 `访问地址.txt`。
 - 开机自启：Win+R → `shell:startup`，把 exe 快捷方式放进去。
 
+## 按住说话（需要 HTTPS）
+
+1. `config.json` 里 `"https": true`（或 `--https`），重启程序 → 自动生成 `cert.pem`/`key.pem`
+2. 手机打开 https 地址，证书警告点「高级 → 继续前往」，允许麦克风
+3. 更多 → 喊话 / 放音 → 按住说话，松开发送到电脑
+4. 声音关不掉：点「强制停止」（音乐 + 朗读 + 残留进程）
+
 ## 热更新
 
 - 手机控制台 → 更多 → 系统更新 → 选 Releases 下载的 zip → 上传 → 应用并重启

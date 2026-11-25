@@ -320,11 +320,14 @@
       <div class="section-title">喊话 / 放音（上传音频到电脑播放）</div>
       <input type="file" id="audio-file" accept="audio/*" style="width:100%;margin-bottom:8px;font-size:12px;color:var(--text2);">
       <div class="row"><button id="audio-upload" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传并播放</button></div>
+      <div class="row"><button id="talk-btn" class="base primary" style="touch-action:none;user-select:none;-webkit-user-select:none;">按住说话（松开发送到电脑）</button></div>
+      <div class="label" id="https-hint" style="font-size:11px;color:var(--text3);line-height:1.5"></div>
       <div class="label" id="audio-status">未播放</div>
       <div class="row">
         <button id="audio-pause" class="base">暂停</button>
         <button id="audio-stop" class="base danger">停止</button>
         <button id="audio-loop" class="base">循环: 关</button>
+        <button id="audio-force-stop" class="base danger">强制停止</button>
       </div>
       <div class="label">音量 <span id="audio-vol-val">80</span>%</div>
       <input type="range" id="audio-vol" min="0" max="100" value="80">
@@ -678,6 +681,9 @@
     loadAudioList();
     updateAudioUI();
     loadVersion();
+    $('https-hint').textContent = window.isSecureContext
+      ? ''
+      : '提示：按住说话需要 HTTPS。把 config.json 里的 "https" 改成 true 后重启，手机首次打开会提示不安全，点「高级 → 继续前往」。';
   };
   function closeMore() { $('more-mask').classList.add('hidden'); $('more-panel').classList.add('hidden'); }
   $('more-mask').onclick = closeMore;
@@ -942,6 +948,112 @@
     send({type:'audio_loop', loop: audioLoop});
     $('audio-loop').textContent = '循环: ' + (audioLoop ? '开' : '关');
   };
+  $('audio-force-stop').onclick = function () {
+    send({type:'audio_force_stop'});
+    toast('已请求停止所有声音（音乐 + 朗读）');
+  };
+
+  // ---------- 按住说话（录一段 → 转 16kHz WAV → 传到电脑播放） ----------
+  var talkStream = null, talkRec = null, talkChunks = [], talkActive = false;
+  function setTalkUI(on) {
+    var b = $('talk-btn');
+    b.textContent = on ? '录音中…松开结束' : '按住说话（松开发送到电脑）';
+    b.classList.toggle('danger', on);
+  }
+  async function toWav16k(blob) {
+    var ab = await blob.arrayBuffer();
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var ac = new AC();
+    var audio = await ac.decodeAudioData(ab);
+    try { ac.close(); } catch (e) {}
+    var inRate = audio.sampleRate, ch = audio.getChannelData(0);
+    var rate = 16000, outLen = Math.floor(ch.length * rate / inRate);
+    var out = new Int16Array(outLen);
+    for (var i = 0; i < outLen; i++) {
+      var pos = i * inRate / rate, i0 = Math.floor(pos), frac = pos - i0;
+      var v = (ch[i0] || 0) * (1 - frac) + (ch[i0 + 1] || 0) * frac;
+      v = Math.max(-1, Math.min(1, v));
+      out[i] = v < 0 ? v * 32768 : v * 32767;
+    }
+    var buf = new ArrayBuffer(44 + out.length * 2), dv = new DataView(buf);
+    function wr(o, str) { for (var k = 0; k < str.length; k++) dv.setUint8(o + k, str.charCodeAt(k)); }
+    wr(0, 'RIFF'); dv.setUint32(4, 36 + out.length * 2, true); wr(8, 'WAVE'); wr(12, 'fmt ');
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
+    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    wr(36, 'data'); dv.setUint32(40, out.length * 2, true);
+    new Int16Array(buf, 44).set(out);
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+  async function startTalk(e) {
+    if (e) e.preventDefault();
+    if (!window.isSecureContext) {
+      toast('按住说话需要 HTTPS：把 config.json 的 https 改成 true 后重启程序');
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('这个浏览器不支持录音');
+      return;
+    }
+    if (talkActive) return;
+    try {
+      talkStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch (err) {
+      toast('麦克风打不开：' + (err && err.message ? err.message : err));
+      return;
+    }
+    talkChunks = [];
+    try {
+      talkRec = new MediaRecorder(talkStream);
+    } catch (err) {
+      if (talkStream) talkStream.getTracks().forEach(function (t) { t.stop(); });
+      talkStream = null;
+      toast('录音初始化失败：' + err);
+      return;
+    }
+    talkRec.ondataavailable = function (ev) { if (ev.data && ev.data.size) talkChunks.push(ev.data); };
+    talkRec.onstop = function () { finishTalk(); };
+    talkRec.start();
+    talkActive = true;
+    setTalkUI(true);
+  }
+  function stopTalk(e) {
+    if (e) e.preventDefault();
+    if (talkRec && talkActive) {
+      try { talkRec.stop(); } catch (err) {}
+    }
+  }
+  async function finishTalk() {
+    talkActive = false;
+    setTalkUI(false);
+    try {
+      var blob = new Blob(talkChunks, { type: (talkRec && talkRec.mimeType) || 'audio/webm' });
+      talkRec = null;
+      if (talkStream) { talkStream.getTracks().forEach(function (t) { t.stop(); }); talkStream = null; }
+      if (!blob.size) { toast('没有录到声音'); return; }
+      $('audio-status').textContent = '转换并发送语音…';
+      var wav = await toWav16k(blob);
+      var fd = new FormData();
+      var name = 'voice-' + Date.now() + '.wav';
+      fd.append('file', wav, name);
+      var r = await fetch('/upload_audio?token=' + encodeURIComponent(token), { method: 'POST', body: fd });
+      var d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || '上传失败');
+      playAudio(d.name);
+      toast('语音已发送到电脑');
+      if ($('audio-status').dataset.uploaded) loadAudioList();
+    } catch (err) {
+      toast('语音发送失败：' + (err && err.message ? err.message : err));
+      $('audio-status').textContent = '语音发送失败';
+    }
+  }
+  var talkBtn = $('talk-btn');
+  talkBtn.addEventListener('pointerdown', startTalk);
+  talkBtn.addEventListener('pointerup', stopTalk);
+  talkBtn.addEventListener('pointercancel', stopTalk);
+  talkBtn.addEventListener('pointerleave', function (e) { if (talkActive) stopTalk(e); });
+  talkBtn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
   $('audio-vol').oninput = function () { $('audio-vol-val').textContent = this.value; };
   $('audio-vol').onchange = function () {
     audioVol = +this.value;

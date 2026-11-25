@@ -25,7 +25,9 @@ import argparse
 import asyncio
 import base64
 import io
+import datetime
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -34,6 +36,7 @@ import re
 import secrets
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import zipfile
@@ -71,7 +74,7 @@ ACCESS_FILE = os.path.join(BASE_DIR, "访问地址.txt")
 LOG_FILE = os.path.join(BASE_DIR, "monitor-lan.log")
 UPDATES_DIR = os.path.join(BASE_DIR, "updates")
 STATIC_OVERRIDE_DIR = os.path.join(BASE_DIR, "static")   # 热更新后的页面放这里，优先于 exe 内置页面
-APP_VERSION = "3.3"
+APP_VERSION = "3.4"
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_PAYLOAD_EXTS = (".exe", ".py")
 UPDATE_STATIC_EXTS = (".html", ".js", ".css", ".svg", ".png", ".ico", ".woff2", ".json", ".txt")
@@ -117,6 +120,7 @@ DEFAULT_CONFIG = {
     "jpeg_quality": 70,
     "motion_threshold": 8.0,
     "demo": False,            # 合成画面（调试用）
+    "https": False,           # 自签 HTTPS（手机麦克风/按住说话需要）
     "notify": {               # 锁屏推送（局域网一般用不到，默认关闭）
         "channel": "off",     # off / ntfy / serverchan
         "topic": "",
@@ -197,6 +201,7 @@ def parse_args(argv=None):
     ap.add_argument("--port", type=int, help="监听端口，默认取 config.json 的 port（8000）")
     ap.add_argument("--demo", action="store_true", help="使用合成画面，便于无屏幕环境自测")
     ap.add_argument("--no-agent", action="store_true", help="只启动服务器，不采集本机画面")
+    ap.add_argument("--https", action="store_true", help="启用自签 HTTPS（麦克风/按住说话需要）")
     return ap.parse_args(argv)
 
 
@@ -209,6 +214,8 @@ if ARGS.port and ARGS.port != CONFIG["port"]:
     log.info("端口已改为 %s 并写入 config.json（防火墙规则请重新运行 开放防火墙.bat）", ARGS.port)
 if ARGS.demo:
     CONFIG["demo"] = True
+if ARGS.https:
+    CONFIG["https"] = True
 NO_AGENT = ARGS.no_agent
 
 
@@ -642,7 +649,8 @@ async def viewer_session(request, ws):
                            "snapshot", "key", "brightness", "process_list",
                            "kill_process", "proof_interval", "tts", "popup",
                            "alarm", "draw", "draw_clear", "audio_play", "audio_pause",
-                           "audio_resume", "audio_stop", "audio_volume", "audio_loop"):
+                           "audio_resume", "audio_stop", "audio_volume", "audio_loop",
+                           "audio_force_stop"):
                     choice = hub.viewer_choice.get(ws)
                     if choice not in hub.agents and hub.agents:
                         choice = list(hub.agents)[0]
@@ -1233,17 +1241,22 @@ def do_key(data):
         log.error("按键失败: %s", e)
 
 
+_tts_procs = []
+
+
 def do_tts(text):
-    """TTS 语音播报"""
+    """TTS 语音播报（记录进程，方便强制停止）"""
     try:
         import subprocess
         text = text.replace("'", "''")
-        subprocess.Popen([
+        proc = subprocess.Popen([
             "powershell", "-Command",
             f"Add-Type -AssemblyName System.Speech; "
             f"$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
             f"$s.Speak('{text}')"
         ])
+        _tts_procs.append(proc)
+        _tts_procs[:] = [x for x in _tts_procs if x.poll() is None]
         log.info("TTS: %s", text[:50])
     except Exception as e:
         log.error("TTS失败: %s", e)
@@ -1639,7 +1652,9 @@ def audio_play(name, loop=False, volume=None):
 def audio_pause():
     if sys.platform != "win32" or not _audio_state["playing"] or _audio_state["paused"]:
         return
-    _mci("pause " + _audio_alias)
+    r, err = _mci("pause " + _audio_alias)
+    if r != 0:
+        log.error("暂停音频失败（MCI %s: %s）", r, err)
     _audio_state["paused"] = True
     log.info("音频已暂停")
 
@@ -1647,7 +1662,9 @@ def audio_pause():
 def audio_resume():
     if sys.platform != "win32" or not _audio_state["playing"] or not _audio_state["paused"]:
         return
-    _mci("resume " + _audio_alias)
+    r, err = _mci("resume " + _audio_alias)
+    if r != 0:
+        log.error("继续音频失败（MCI %s: %s）", r, err)
     _audio_state["paused"] = False
     log.info("音频已继续")
 
@@ -1655,12 +1672,58 @@ def audio_resume():
 def audio_stop():
     if sys.platform != "win32":
         return False
-    _mci("stop " + _audio_alias)
-    _mci("close " + _audio_alias)
+    r1, e1 = _mci("stop " + _audio_alias)
+    r2, e2 = _mci("close " + _audio_alias)
+    if r1 != 0 and r2 != 0:
+        log.warning("停止音频返回错误（stop %s:%s / close %s:%s），再试 close all",
+                    r1, e1, r2, e2)
+        _mci("close all")
     if _audio_state["playing"] or _audio_state["name"]:
         log.info("音频已停止")
     _audio_state.update(playing=False, paused=False, name="")
     return True
+
+
+def _kill_orphan_tts():
+    """结束以前残留的 TTS 朗读进程（app 重启后旧 PowerShell 可能还在念）"""
+    if sys.platform != "win32":
+        return
+    try:
+        subprocess.run([
+            "powershell", "-NoProfile", "-Command",
+            "Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" | "
+            "Where-Object { $_.CommandLine -like '*SpeechSynthesizer*' } | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+        ], capture_output=True, timeout=15)
+    except Exception as e:
+        log.warning("清理残留 TTS 失败: %s", e)
+
+
+def audio_force_stop():
+    """强制停止所有由本程序发出的声音：MCI 播放 + TTS 朗读（关不掉时的兜底）"""
+    stopped = False
+    for cmd in ("stop " + _audio_alias, "close " + _audio_alias, "close all"):
+        try:
+            r, _err = _mci(cmd)
+            if r == 0:
+                stopped = True
+        except Exception:
+            pass
+    if _audio_state.get("playing") or _audio_state.get("name"):
+        stopped = True
+    _audio_state.update(playing=False, paused=False, name="")
+    for proc in list(_tts_procs):
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                stopped = True
+        except Exception:
+            pass
+    _tts_procs.clear()
+    _kill_orphan_tts()
+    if stopped:
+        log.info("已强制停止所有声音（MCI + TTS + 残留进程）")
+    return stopped
 
 
 def audio_set_volume(level):
@@ -1867,6 +1930,9 @@ async def dispatch(link, state, screen_grab, cam, data):
         await _send_audio_state(link)
     elif t == "audio_loop":
         _audio_state["loop"] = bool(data.get("loop", False))
+        await _send_audio_state(link)
+    elif t == "audio_force_stop":
+        await run_blocking(audio_force_stop)
         await _send_audio_state(link)
     elif t == "popup":
         do_popup(data.get("text", ""), data.get("duration", 5))
@@ -2084,9 +2150,10 @@ def access_urls(ips=None):
         ips = local_ipv4()
     port = CONFIG["port"]
     token = quote(str(CONFIG["token"]), safe="")
+    scheme = "https" if HTTPS_ENABLED else "http"
     if not ips:
         ips = [("", "127.0.0.1")]
-    return [f"http://{ip}:{port}/?token={token}" for _, ip in ips]
+    return [f"{scheme}://{ip}:{port}/?token={token}" for _, ip in ips]
 
 
 def write_access_file(urls):
@@ -2162,6 +2229,54 @@ async def supervise(name, coro_factory, delay=2.0):
 
 
 ENGINE_STATE = {}
+HTTPS_ENABLED = False
+
+
+def ensure_https_cert():
+    """生成/复用自签证书（手机浏览器用麦克风需要安全上下文）"""
+    cert_path = os.path.join(BASE_DIR, "cert.pem")
+    key_path = os.path.join(BASE_DIR, "key.pem")
+    if os.path.isfile(cert_path) and os.path.isfile(key_path):
+        return cert_path, key_path
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.datetime.utcnow()
+    san = [x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+           x509.DNSName("localhost")]
+    try:
+        san.append(x509.DNSName(socket.gethostname().lower()))
+    except Exception:
+        pass
+    for _ifname, ip in local_ipv4():
+        try:
+            san.append(x509.IPAddress(ipaddress.ip_address(ip)))
+        except Exception:
+            pass
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Phone PC Monitor")])
+    cert = (x509.CertificateBuilder()
+            .subject_name(subject).issuer_name(subject)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=3650))
+            .add_extension(x509.SubjectAlternativeName(san), critical=False)
+            .sign(key, hashes.SHA256()))
+    with open(key_path, "wb") as f:
+        f.write(key.private_bytes(serialization.Encoding.PEM,
+                                  serialization.PrivateFormat.PKCS8,
+                                  serialization.NoEncryption()))
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    try:
+        os.chmod(key_path, 0o600)
+    except Exception:
+        pass
+    log.info("已生成自签 HTTPS 证书（手机首次打开需要点“继续前往”）")
+    return cert_path, key_path
 
 
 async def stream_watchdog():
@@ -2713,6 +2828,7 @@ async def discard_update(request):
 async def main():
     enable_dpi_awareness()
     _cleanup_updates_on_start()
+    _kill_orphan_tts()
 
     app = web.Application(client_max_size=UPDATE_MAX_BYTES + 8 * 1024 * 1024)
     app.router.add_get("/", index)
@@ -2727,9 +2843,23 @@ async def main():
     app.router.add_post("/apply_update", apply_update)
     app.router.add_post("/discard_update", discard_update)
 
+    ssl_ctx = None
+    global HTTPS_ENABLED
+    if CONFIG.get("https"):
+        try:
+            cert_path, key_path = ensure_https_cert()
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(cert_path, key_path)
+            HTTPS_ENABLED = True
+            log.info("已启用 HTTPS（自签证书）：手机首次打开会提示不安全，点“高级 → 继续前往”即可")
+        except Exception as e:
+            log.error("HTTPS 启用失败（%s），回退到 HTTP", e)
+            ssl_ctx = None
+            HTTPS_ENABLED = False
+
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, CONFIG["host"], CONFIG["port"])
+    site = web.TCPSite(runner, CONFIG["host"], CONFIG["port"], ssl_context=ssl_ctx)
     try:
         await site.start()
     except OSError as e:
@@ -2754,6 +2884,10 @@ async def main():
     try:
         await asyncio.Event().wait()
     finally:
+        try:
+            audio_force_stop()
+        except Exception:
+            pass
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

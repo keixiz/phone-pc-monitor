@@ -8,3 +8,6 @@ pynput
 # 摄像头画面（新版已默认包含，摄像头才能用）
 opencv-python-headless
 numpy
+
+# 自签 HTTPS 证书（手机麦克风/按住说话需要）
+cryptography
