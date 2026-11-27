@@ -74,7 +74,7 @@ ACCESS_FILE = os.path.join(BASE_DIR, "访问地址.txt")
 LOG_FILE = os.path.join(BASE_DIR, "monitor-lan.log")
 UPDATES_DIR = os.path.join(BASE_DIR, "updates")
 STATIC_OVERRIDE_DIR = os.path.join(BASE_DIR, "static")   # 热更新后的页面放这里，优先于 exe 内置页面
-APP_VERSION = "3.8"
+APP_VERSION = "3.9"
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_PAYLOAD_EXTS = (".exe", ".py")
 UPDATE_STATIC_EXTS = (".html", ".js", ".css", ".svg", ".png", ".ico", ".woff2", ".json", ".txt")
@@ -202,6 +202,7 @@ def parse_args(argv=None):
     ap.add_argument("--demo", action="store_true", help="使用合成画面，便于无屏幕环境自测")
     ap.add_argument("--no-agent", action="store_true", help="只启动服务器，不采集本机画面")
     ap.add_argument("--https", action="store_true", help="启用自签 HTTPS（麦克风/按住说话需要）")
+    ap.add_argument("--probe", action="store_true", help="只做摄像头检测并写出 摄像头检测.txt，然后退出")
     return ap.parse_args(argv)
 
 
@@ -791,6 +792,8 @@ class Camera:
         self.cv2 = None
         self.last_fail = 0.0
         self.fail_reason = ""
+        self.black_frames = 0
+        self.black_warned = False
 
     def _open(self):
         idx = int(CFG.get("camera_index", 0))
@@ -822,6 +825,7 @@ class Camera:
         for label, backend in backends:
             cap = None
             try:
+                log.info("尝试打开摄像头：编号 %s，后端 %s", idx, label)
                 cap = cv2.VideoCapture(idx, backend)
                 if cap is None or not cap.isOpened():
                     raise RuntimeError("无法打开设备")
@@ -873,8 +877,10 @@ class Camera:
             log.error("摄像头初始化异常: %s", e)
         if not ok:
             self.last_fail = now
-            self.fail_reason = "摄像头打不开：被其他程序占用（微信/QQ/相机），或电脑没有可用摄像头"
-            log.warning("摄像头打不开（编号 %s）", CFG.get("camera_index", 0))
+            self.fail_reason = ("摄像头打不开：请检查 1) Windows 设置 → 隐私和安全性 → 相机 → "
+                                "允许桌面应用访问相机；2) 关掉微信/QQ/相机等占用程序；"
+                                "3) 设备管理器/外接 USB 摄像头是否正常")
+            log.warning("摄像头打不开（配置编号 %s）", CFG.get("camera_index", 0))
         return ok
 
     def release(self):
@@ -901,6 +907,16 @@ class Camera:
                 self.release()
                 self.last_fail = time.time()
                 return None
+            try:
+                if frame is not None and frame.mean() < 3:
+                    self.black_frames += 1
+                    if self.black_frames >= 30 and not self.black_warned:
+                        self.black_warned = True
+                        log.warning("摄像头已打开但连续收到全黑画面：检查相机隐私设置或被其他程序遮挡")
+                else:
+                    self.black_frames = 0
+            except Exception:
+                pass
             ok, buf = self.cv2.imencode(".jpg", frame, [self.cv2.IMWRITE_JPEG_QUALITY, CFG["jpeg_quality"]])
             return buf.tobytes() if ok else None
         except Exception as e:
@@ -1725,9 +1741,42 @@ def _input_lock_state():
 
 # ---------- 摄像头诊断 ----------
 
+def _camera_privacy():
+    """读 Windows 相机隐私开关（桌面应用）"""
+    if sys.platform != "win32":
+        return None
+    out = {}
+    try:
+        import winreg
+        targets = [
+            ("HKCU", winreg.HKEY_CURRENT_USER,
+             r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam"),
+            ("HKLM", winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam"),
+            ("HKCU-NonPackaged", winreg.HKEY_CURRENT_USER,
+             r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged"),
+            ("HKLM-NonPackaged", winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged"),
+        ]
+        for name, hive, path in targets:
+            try:
+                with winreg.OpenKey(hive, path) as k:
+                    try:
+                        v, _ = winreg.QueryValueEx(k, "Value")
+                        out[name] = v
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
+
 def camera_probe():
     """返回一份摄像头检测报告，方便定位打不开的原因"""
-    report = {"platform": sys.platform, "cv2": None, "count": 0, "results": [], "hint": ""}
+    report = {"platform": sys.platform, "cv2": None, "count": 0, "results": [],
+              "hint": "", "privacy": _camera_privacy()}
     try:
         import cv2
         report["cv2"] = cv2.__version__
@@ -2033,10 +2082,12 @@ async def dispatch(link, state, screen_grab, cam, data):
     if t == "set_source":
         src = data.get("source", "screen")
         state["source"] = src
-        if src == "camera" and not cam._ensure():
-            # 摄像头不可用别让手机端一脸茫然：画面卡住时给具体原因
-            await link_send(link, {"type": "toast",
-                                   "text": cam.fail_reason or "摄像头不可用"})
+        if src == "camera":
+            await link_send(link, {"type": "toast", "text": "正在打开摄像头（首次可能要几秒）…"})
+            ok = await run_blocking(cam._ensure)
+            if not ok:
+                await link_send(link, {"type": "toast",
+                                       "text": cam.fail_reason or "摄像头不可用"})
         elif src == "screen":
             cam.release()   # 无人观看处于暂停状态时切换，也要把摄像头放掉
     elif t == "overlay":
@@ -3110,8 +3161,43 @@ def acquire_single_instance():
     return True
 
 
+def run_camera_probe_cli():
+    """--probe：写一份人可读的检测报告到程序目录，方便离线排查"""
+    report = camera_probe()
+    lines = ["手机监控电脑 · 摄像头检测", "时间: " + time.strftime("%Y-%m-%d %H:%M:%S")]
+    lines.append("系统: %s   OpenCV: %s" % (report.get("platform"), report.get("cv2") or "不可用"))
+    if report.get("error"):
+        lines.append("错误: " + str(report["error"]))
+    pr = report.get("privacy")
+    if pr:
+        lines.append("相机隐私设置: %s" % json.dumps(pr, ensure_ascii=False))
+    lines.append("")
+    lines.append("检测过程:")
+    for r in report.get("results", []):
+        lines.append("  编号 %s / 后端 %s: opened=%s read=%s %s" % (
+            r.get("index"), r.get("backend"), r.get("opened"), r.get("read"),
+            r.get("error") or ""))
+    lines.append("")
+    lines.append("结论: " + (report.get("hint") or "未知"))
+    text = "\n".join(lines) + "\n"
+    path = os.path.join(BASE_DIR, "摄像头检测.txt")
+    try:
+        with open(path, "w", encoding="utf-8-sig") as f:
+            f.write(text)
+        log.info("摄像头检测报告已写入 %s", path)
+    except Exception as e:
+        log.error("写入摄像头检测报告失败: %s", e)
+    try:
+        print(text)
+    except Exception:
+        pass
+
+
 async def main():
     enable_dpi_awareness()
+    if getattr(ARGS, "probe", False):
+        run_camera_probe_cli()
+        return
     if not acquire_single_instance():
         os._exit(0)
     _cleanup_updates_on_start()
