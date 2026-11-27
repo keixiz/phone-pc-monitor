@@ -72,9 +72,11 @@ PROOF_DIR = os.path.join(BASE_DIR, "proof")
 AUDIO_DIR = os.path.join(BASE_DIR, "audio")
 ACCESS_FILE = os.path.join(BASE_DIR, "访问地址.txt")
 LOG_FILE = os.path.join(BASE_DIR, "monitor-lan.log")
+GUARDIAN_LOG = os.path.join(BASE_DIR, "guardian.log")
+HEARTBEAT_FILE = os.path.join(BASE_DIR, "monitor-heartbeat.json")
 UPDATES_DIR = os.path.join(BASE_DIR, "updates")
 STATIC_OVERRIDE_DIR = os.path.join(BASE_DIR, "static")   # 热更新后的页面放这里，优先于 exe 内置页面
-APP_VERSION = "3.9"
+APP_VERSION = "4.0"
 UPDATE_MAX_BYTES = 250 * 1024 * 1024
 UPDATE_PAYLOAD_EXTS = (".exe", ".py")
 UPDATE_STATIC_EXTS = (".html", ".js", ".css", ".svg", ".png", ".ico", ".woff2", ".json", ".txt")
@@ -203,6 +205,8 @@ def parse_args(argv=None):
     ap.add_argument("--no-agent", action="store_true", help="只启动服务器，不采集本机画面")
     ap.add_argument("--https", action="store_true", help="启用自签 HTTPS（麦克风/按住说话需要）")
     ap.add_argument("--probe", action="store_true", help="只做摄像头检测并写出 摄像头检测.txt，然后退出")
+    ap.add_argument("--run", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--no-guardian", action="store_true", help="不启用守护进程，直接运行（调试用）")
     return ap.parse_args(argv)
 
 
@@ -655,6 +659,7 @@ async def viewer_session(request, ws):
                            "alarm", "draw", "draw_clear", "audio_play", "audio_pause",
                            "audio_resume", "audio_stop", "audio_volume", "audio_loop",
                            "audio_force_stop", "camera_probe", "input_lock",
+                           "wallpaper_restore",
                            "input_lock_query"):
                     choice = hub.viewer_choice.get(ws)
                     if choice not in hub.agents and hub.agents:
@@ -1144,27 +1149,108 @@ def handle_chat(text):
 
 # ---------- 换壁纸 ----------
 
-def set_wallpaper(b64data):
+WALLPAPER_FILE = os.path.join(BASE_DIR, "wallpaper.jpg")
+WALLPAPER_BACKUP = os.path.join(BASE_DIR, "wallpaper-backup.json")
+
+
+def _get_win_wallpaper():
     try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(2048)
+        ctypes.windll.user32.SystemParametersInfoW(0x0073, 2048, buf, 0)   # SPI_GETDESKWALLPAPER
+        return buf.value
+    except Exception:
+        return ""
+
+
+def _backup_wallpaper_once():
+    try:
+        if os.path.isfile(WALLPAPER_BACKUP):
+            return
+        old = _get_win_wallpaper()
+        if old and os.path.isfile(old):
+            with open(WALLPAPER_BACKUP, "w", encoding="utf-8") as f:
+                json.dump({"path": old}, f, ensure_ascii=False)
+            log.info("已记录原壁纸路径: %s", old)
+    except Exception as e:
+        log.warning("记录原壁纸失败: %s", e)
+
+
+def _set_win_wallpaper(path):
+    import ctypes
+    ok = ctypes.windll.user32.SystemParametersInfoW(20, 0, path, 3)  # SET + UPDATEINIFILE|SENDCHANGE
+    if not ok:
+        raise RuntimeError("SystemParametersInfo 失败（文件可能不是有效 JPG）")
+
+
+def _set_wallpaper_style_fill():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0,
+                            winreg.KEY_SET_VALUE) as k:
+            winreg.SetValueEx(k, "WallpaperStyle", 0, winreg.REG_SZ, "10")   # 填充
+            winreg.SetValueEx(k, "TileWallpaper", 0, winreg.REG_SZ, "0")
+    except Exception:
+        pass
+
+
+def set_wallpaper(b64data):
+    """手机传图 → 转 JPEG → 设为电脑壁纸；第一次修改前记住原壁纸，方便恢复"""
+    try:
+        if not b64data:
+            return False
         raw = base64.b64decode(b64data)
-        path = os.path.join(BASE_DIR, "wallpaper_tmp.jpg")
-        with open(path, "wb") as f:
-            f.write(raw)
+        if not raw:
+            return False
+        try:
+            from PIL import Image
+            import io as _io
+            im = Image.open(_io.BytesIO(raw)).convert("RGB")
+            im.thumbnail((3840, 2160))
+            im.save(WALLPAPER_FILE, "JPEG", quality=92)
+        except Exception:
+            with open(WALLPAPER_FILE, "wb") as f:
+                f.write(raw)
         if sys.platform == "win32":
-            import ctypes
-            SPI_SETDESKWALLPAPER = 20
-            SPIF_UPDATEINIFILE = 1
-            SPIF_SENDCHANGE = 2
-            ctypes.windll.user32.SystemParametersInfoW(
-                SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
-            )
+            _backup_wallpaper_once()
+            _set_win_wallpaper(WALLPAPER_FILE)
+            _set_wallpaper_style_fill()
         elif sys.platform == "darwin":
-            subprocess.run(["osascript", "-e", f'tell application "System Events" to set picture of every desktop to "{path}"'])
+            subprocess.run(["osascript", "-e",
+                            f'tell application "System Events" to set picture of every desktop to "{WALLPAPER_FILE}"'])
         else:
-            log.warning("当前系统不支持自动换壁纸")
-        log.info("壁纸已更换")
+            log.warning("当前系统不支持自动换壁纸（仅 Windows/macOS）")
+            return False
+        log.info("壁纸已更换（%.1f KB）", len(raw) / 1024)
+        return True
     except Exception as e:
         log.error("换壁纸失败: %s", e)
+        return False
+
+
+def restore_wallpaper():
+    """恢复第一次换壁纸前记录的原壁纸"""
+    try:
+        if not os.path.isfile(WALLPAPER_BACKUP):
+            log.warning("没有记录原壁纸（还没用本程序换过壁纸？）")
+            return False
+        with open(WALLPAPER_BACKUP, encoding="utf-8") as f:
+            path = (json.load(f) or {}).get("path", "")
+        if not path or not os.path.isfile(path):
+            log.warning("原壁纸文件不存在: %s", path)
+            return False
+        if sys.platform == "win32":
+            _set_win_wallpaper(path)
+        elif sys.platform == "darwin":
+            subprocess.run(["osascript", "-e",
+                            f'tell application "System Events" to set picture of every desktop to "{path}"'])
+        else:
+            return False
+        log.info("已恢复原壁纸: %s", path)
+        return True
+    except Exception as e:
+        log.error("恢复壁纸失败: %s", e)
+        return False
 
 
 # ---------- 鼠标 ----------
@@ -2120,7 +2206,13 @@ async def dispatch(link, state, screen_grab, cam, data):
     elif t == "chat":
         handle_chat(data.get("text", ""))
     elif t == "wallpaper":
-        await run_blocking(set_wallpaper, data.get("data", ""))
+        ok = await run_blocking(set_wallpaper, data.get("data", ""))
+        await link_send(link, {"type": "toast",
+                               "text": "壁纸已更换" if ok else "换壁纸失败（看电脑端日志）"})
+    elif t == "wallpaper_restore":
+        ok = await run_blocking(restore_wallpaper)
+        await link_send(link, {"type": "toast",
+                               "text": "已恢复原壁纸" if ok else "恢复失败：没有找到原壁纸记录"})
     elif t == "snapshot":
         await take_snapshot(link, screen_grab, cam, state["source"])
     elif t == "key":
@@ -3056,7 +3148,7 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
                          creationflags=flags, close_fds=True)
         time.sleep(0.5)
         log.info("热更新：退出旧进程，交给更新脚本替换文件")
-        os._exit(0)
+        os._exit(42 if os.environ.get("PCM_GUARDIAN") == "1" else 0)
     else:
         log.info("热更新：重新加载源码")
         time.sleep(0.2)
@@ -3161,6 +3253,155 @@ def acquire_single_instance():
     return True
 
 
+def _mutex_exists():
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        h = kernel32.OpenMutexW(0x00100000, False, "PhonePCMonitor_SingleInstance")
+        if h:
+            kernel32.CloseHandle(h)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _guardian_logger():
+    logg = logging.getLogger("guardian")
+    if logg.handlers:
+        return logg
+    logg.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    try:
+        if os.path.exists(GUARDIAN_LOG) and os.path.getsize(GUARDIAN_LOG) > 2 * 1024 * 1024:
+            try:
+                os.replace(GUARDIAN_LOG, GUARDIAN_LOG + ".1")
+            except Exception:
+                pass
+        h = logging.FileHandler(GUARDIAN_LOG, encoding="utf-8")
+    except Exception:
+        h = logging.StreamHandler()
+    h.setFormatter(fmt)
+    logg.addHandler(h)
+    return logg
+
+
+def _heartbeat_alive(pid):
+    """主程序是否还在正常打心跳（防卡死）"""
+    try:
+        with open(HEARTBEAT_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        if int(data.get("pid", -1)) != pid:
+            return True     # 文件可能还是旧的，先不杀
+        return (time.time() - float(data.get("ts", 0))) < 180
+    except Exception:
+        return True
+
+
+def run_guardian(argv):
+    """保底进程：守护主程序；崩溃/卡死自动拉起；更新退出时不干扰替换并让更新脚本接管"""
+    g = _guardian_logger()
+    current = {"proc": None}
+
+    def _stop(signum, frame):
+        g.info("收到退出信号 %s，正在结束主程序", signum)
+        try:
+            if current["proc"] is not None and current["proc"].poll() is None:
+                current["proc"].terminate()
+        except Exception:
+            pass
+        os._exit(0)
+
+    try:
+        import signal as _signal
+        for _sig in (_signal.SIGINT, _signal.SIGTERM):
+            try:
+                _signal.signal(_sig, _stop)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    if _mutex_exists():
+        g.info("已有实例在运行，守护进程退出（不弹窗）")
+        return 0
+    env = dict(os.environ, PCM_GUARDIAN="1")
+    if FROZEN:
+        base = [sys.executable]
+    else:
+        base = [sys.executable, os.path.abspath(__file__)]
+    extra = [a for a in argv if a not in ("--run", "--no-guardian")]
+    cmd = base + ["--run"] + extra
+    restarts = []
+    g.info("守护进程启动，准备拉起主程序: %s", " ".join(cmd[:3]))
+    while True:
+        try:
+            child = subprocess.Popen(cmd, cwd=BASE_DIR, env=env)
+        except Exception as e:
+            g.error("拉起主程序失败: %s", e)
+            old_exe = os.path.join(BASE_DIR, "phone-pc-monitor.old.exe")
+            if os.path.isfile(old_exe):
+                g.warning("尝试用旧版本 %s 启动", old_exe)
+                try:
+                    subprocess.Popen([old_exe], cwd=BASE_DIR, env=env)
+                    return 0
+                except Exception as e2:
+                    g.error("旧版本启动也失败: %s", e2)
+            return 1
+        current["proc"] = child
+        g.info("主程序已启动，pid=%s", child.pid)
+        rc = None
+        while True:
+            rc = child.poll()
+            if rc is not None:
+                break
+            if not _heartbeat_alive(child.pid):
+                g.error("主程序超过 180 秒无心跳，判定卡死，强制重启")
+                try:
+                    child.kill()
+                except Exception:
+                    pass
+                rc = -9
+                break
+            time.sleep(2)
+        if rc == 0:
+            g.info("主程序正常退出，守护进程结束")
+            return 0
+        if rc == 42:
+            g.info("主程序因热更新退出（code 42），守护进程退出并交由更新脚本替换文件")
+            return 0
+        now = time.time()
+        restarts = [t for t in restarts if now - t < 600]
+        g.warning("主程序异常退出 code=%s（近 10 分钟第 %d 次）", rc, len(restarts) + 1)
+        if len(restarts) >= 5:
+            g.error("10 分钟内崩溃超过 5 次，可能新版本有问题")
+            old_exe = os.path.join(BASE_DIR, "phone-pc-monitor.old.exe")
+            if os.path.isfile(old_exe):
+                g.warning("尝试用旧版本 %s 启动", old_exe)
+                try:
+                    subprocess.Popen([old_exe], cwd=BASE_DIR, env=env)
+                    return 0
+                except Exception as e:
+                    g.error("旧版本启动失败: %s", e)
+            g.error("放弃重启，请查看 monitor-lan.log 和 guardian.log")
+            return 1
+        restarts.append(now)
+        time.sleep(min(2 * len(restarts), 12))
+
+
+async def heartbeat_loop():
+    while True:
+        try:
+            tmp = HEARTBEAT_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"pid": os.getpid(), "ts": time.time()}, f)
+            os.replace(tmp, HEARTBEAT_FILE)
+        except Exception:
+            pass
+        await asyncio.sleep(10)
+
+
 def run_camera_probe_cli():
     """--probe：写一份人可读的检测报告到程序目录，方便离线排查"""
     report = camera_probe()
@@ -3253,6 +3494,7 @@ async def main():
             log.error("本机采集启动失败（服务器继续运行）: %s", e)
     tasks.append(asyncio.create_task(network_watch(), name="net-watch"))
     tasks.append(asyncio.create_task(stream_watchdog(), name="stream-watchdog"))
+    tasks.append(asyncio.create_task(heartbeat_loop(), name="heartbeat"))
 
     try:
         await asyncio.Event().wait()
@@ -3269,6 +3511,12 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        if ARGS.run or ARGS.probe or ARGS.no_guardian:
+            if ARGS.probe:
+                asyncio.run(main())
+            else:
+                asyncio.run(main())
+        else:
+            run_guardian(sys.argv[1:])
     except KeyboardInterrupt:
         log.info("已退出")

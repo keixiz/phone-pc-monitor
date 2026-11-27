@@ -29,3 +29,12 @@ lan/updates/
 cert.pem
 lan/cert.pem
 lan/key.pem
+
+# 守护进程心跳/日志
+lan/monitor-heartbeat.json
+lan/guardian.log
+lan/guardian.log.1
+
+# 运行时壁纸文件
+lan/wallpaper.jpg
+lan/wallpaper-backup.json

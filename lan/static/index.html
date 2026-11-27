@@ -394,11 +394,19 @@
     </div>
 
     <div class="section">
-      <div class="section-title">壁纸与聊天</div>
+      <div class="section-title">换壁纸</div>
       <input type="file" id="wp-file" accept="image/*" style="font-size:12px;color:var(--text2);margin-bottom:8px;">
       <div class="row">
+        <button id="wp-apply" class="base primary">设为电脑壁纸</button>
+        <button id="wp-restore" class="base">恢复原壁纸</button>
+      </div>
+      <div class="label" id="wp-status" style="font-size:11px;color:var(--dim);line-height:1.6">选一张图片（≤15MB），点「设为电脑壁纸」</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">聊天</div>
+      <div class="row">
         <button id="act-chat" class="base primary"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>打开聊天</button>
-        
       </div>
     </div>
     </section>
@@ -763,16 +771,29 @@
     setTimeout(loadProof, 1500);
   };
 
+  // ---------- 换壁纸 ----------
+  var wpFile = null;
   $('wp-file').onchange = function () {
-    var f = this.files[0];
-    if (!f) return;
-    if (f.size > 8 * 1024 * 1024) { toast('图片太大，请选 8MB 以内'); return; }
-    var r = new FileReader();
-    r.onload = function () {
-      send({type:'wallpaper', data: r.result.split(',')[1]});
-      toast('壁纸已发送');
+    wpFile = this.files[0] || null;
+    $('wp-status').textContent = wpFile
+      ? ('已选择：' + wpFile.name + '（点「设为电脑壁纸」）')
+      : '选一张图片（≤15MB），点「设为电脑壁纸」';
+  };
+  $('wp-apply').onclick = function () {
+    if (!wpFile) { toast('先选一张图片'); return; }
+    if (wpFile.size > 15 * 1024 * 1024) { toast('图片太大（限 15MB）'); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      send({type: 'wallpaper', data: String(reader.result).split(',')[1]});
+      $('wp-status').textContent = '正在设置壁纸…';
+      toast('已发送壁纸，正在设置');
     };
-    r.readAsDataURL(f);
+    reader.onerror = function () { toast('读取图片失败'); };
+    reader.readAsDataURL(wpFile);
+  };
+  $('wp-restore').onclick = function () {
+    send({type: 'wallpaper_restore'});
+    toast('已请求恢复原壁纸');
   };
 
   $('act-snap').onclick = function () {
